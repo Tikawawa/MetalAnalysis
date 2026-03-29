@@ -6,16 +6,16 @@ import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
+    QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
-    QPushButton, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from pycalphad import Database
 
-from core.calculations import SteppingResult, calculate_stepping
-from core.plotting import plot_stepping_result
+from core.calculations import SteppingResult, calculate_stepping, CompositionSteppingResult, calculate_composition_stepping
+from core.plotting import plot_stepping_result, plot_composition_stepping
 from core.presets import get_binary_preset, translate_phase_short, MELTING_POINTS_K
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
 
@@ -42,6 +42,31 @@ class SteppingWorker(QThread):
         self.finished.emit(result)
 
 
+class CompSteppingWorker(QThread):
+    """Worker thread for composition sweep calculation."""
+    finished = pyqtSignal(object)  # CompositionSteppingResult
+
+    def __init__(self, db, elements, varied_element, comp_min, comp_max, comp_step,
+                 temperature, pressure):
+        super().__init__()
+        self.db = db
+        self.elements = elements
+        self.varied_element = varied_element
+        self.comp_min = comp_min
+        self.comp_max = comp_max
+        self.comp_step = comp_step
+        self.temperature = temperature
+        self.pressure = pressure
+
+    def run(self):
+        result = calculate_composition_stepping(
+            self.db, self.elements, self.varied_element,
+            self.comp_min, self.comp_max, self.comp_step,
+            self.temperature, self.pressure,
+        )
+        self.finished.emit(result)
+
+
 class SteppingPanel(QWidget):
     """Panel for stepping calculations (phase fraction vs temperature)."""
 
@@ -55,6 +80,9 @@ class SteppingPanel(QWidget):
         self._last_result: SteppingResult | None = None
         self._temp_unit: str = "K"   # "K" or "C"
         self._comp_unit: str = "mole_fraction"  # "mole_fraction" or "weight_percent"
+        self._sweep_mode: str = "temperature"  # "temperature" or "composition"
+        self._comp_worker: CompSteppingWorker | None = None
+        self._last_comp_result: CompositionSteppingResult | None = None
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -149,6 +177,27 @@ class SteppingPanel(QWidget):
         title = QLabel("Stepping Calculator")
         title.setObjectName("heading")
         layout.addWidget(title)
+
+        # --- Sweep mode toggle ---
+        mode_group = QGroupBox("Sweep Mode")
+        mode_layout = QHBoxLayout()
+        self.temp_sweep_radio = QRadioButton("Sweep Temperature")
+        self.temp_sweep_radio.setChecked(True)
+        self.temp_sweep_radio.setToolTip(
+            "Sweep temperature at fixed composition (standard mode)"
+        )
+        self.comp_sweep_radio = QRadioButton("Sweep Composition")
+        self.comp_sweep_radio.setToolTip(
+            "Sweep composition at fixed temperature to see how phases change "
+            "as you add more of an element"
+        )
+        mode_layout.addWidget(self.temp_sweep_radio)
+        mode_layout.addWidget(self.comp_sweep_radio)
+        mode_layout.addStretch()
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
+        self.temp_sweep_radio.toggled.connect(self._on_sweep_mode_changed)
 
         # --- Composition input ---
         comp_group = QGroupBox("Fixed Composition")
@@ -247,6 +296,52 @@ class SteppingPanel(QWidget):
 
         temp_group.setLayout(temp_layout)
         layout.addWidget(temp_group)
+        self.temp_range_group = temp_group
+
+        # --- Composition Sweep Conditions (hidden by default) ---
+        self.comp_sweep_group = QGroupBox("Composition Sweep Range")
+        comp_sweep_layout = QHBoxLayout()
+
+        comp_sweep_layout.addWidget(QLabel("Fixed T (K):"))
+        self.fixed_temp_spin = QDoubleSpinBox()
+        self.fixed_temp_spin.setRange(100, 5000)
+        self.fixed_temp_spin.setValue(800)
+        self.fixed_temp_spin.setSingleStep(50)
+        self.fixed_temp_spin.setToolTip(
+            "Fixed temperature for the composition sweep"
+        )
+        comp_sweep_layout.addWidget(self.fixed_temp_spin)
+
+        comp_sweep_layout.addWidget(QLabel("X min:"))
+        self.x_min_spin = QDoubleSpinBox()
+        self.x_min_spin.setRange(0.001, 0.999)
+        self.x_min_spin.setValue(0.01)
+        self.x_min_spin.setDecimals(3)
+        self.x_min_spin.setSingleStep(0.01)
+        self.x_min_spin.setToolTip("Minimum composition (mole fraction)")
+        comp_sweep_layout.addWidget(self.x_min_spin)
+
+        comp_sweep_layout.addWidget(QLabel("X max:"))
+        self.x_max_spin = QDoubleSpinBox()
+        self.x_max_spin.setRange(0.001, 0.999)
+        self.x_max_spin.setValue(0.50)
+        self.x_max_spin.setDecimals(3)
+        self.x_max_spin.setSingleStep(0.01)
+        self.x_max_spin.setToolTip("Maximum composition (mole fraction)")
+        comp_sweep_layout.addWidget(self.x_max_spin)
+
+        comp_sweep_layout.addWidget(QLabel("X step:"))
+        self.x_step_spin = QDoubleSpinBox()
+        self.x_step_spin.setRange(0.001, 0.1)
+        self.x_step_spin.setValue(0.01)
+        self.x_step_spin.setDecimals(3)
+        self.x_step_spin.setSingleStep(0.005)
+        self.x_step_spin.setToolTip("Composition step size")
+        comp_sweep_layout.addWidget(self.x_step_spin)
+
+        self.comp_sweep_group.setLayout(comp_sweep_layout)
+        self.comp_sweep_group.setVisible(False)
+        layout.addWidget(self.comp_sweep_group)
 
         # --- Buttons ---
         btn_layout = QHBoxLayout()
@@ -329,6 +424,27 @@ class SteppingPanel(QWidget):
         # Connect element combo signals for auto-fill
         self.el1_combo.currentTextChanged.connect(self._on_element_changed)
         self.el2_combo.currentTextChanged.connect(self._on_element_changed)
+
+    # ------------------------------------------------------------------
+    # Sweep mode toggle
+    # ------------------------------------------------------------------
+
+    def _on_sweep_mode_changed(self, temp_checked: bool):
+        """Toggle between temperature sweep and composition sweep modes."""
+        if temp_checked:
+            self._sweep_mode = "temperature"
+            self.temp_range_group.setVisible(True)
+            self.comp_sweep_group.setVisible(False)
+            self.comp_label.setVisible(True)
+            self.comp_spin.setVisible(True)
+            self.calc_btn.setText("Calculate Stepping")
+        else:
+            self._sweep_mode = "composition"
+            self.temp_range_group.setVisible(False)
+            self.comp_sweep_group.setVisible(True)
+            self.comp_label.setVisible(False)
+            self.comp_spin.setVisible(False)
+            self.calc_btn.setText("Calculate Composition Sweep")
 
     # ------------------------------------------------------------------
     # Smart temperature range auto-fill
@@ -533,8 +649,10 @@ class SteppingPanel(QWidget):
         if not self.db:
             return
 
-        # Guard against race condition: don't start a new calc while one is running
+        # Guard against race condition
         if self._worker is not None and self._worker.isRunning():
+            return
+        if self._comp_worker is not None and self._comp_worker.isRunning():
             return
 
         el1 = self.el1_combo.currentText()
@@ -548,6 +666,94 @@ class SteppingPanel(QWidget):
             )
             return
 
+        # Dispatch based on sweep mode
+        if self._sweep_mode == "composition":
+            self._calculate_comp_sweep(el1, el2)
+        else:
+            self._calculate_temp_sweep(el1, el2)
+
+    def _calculate_comp_sweep(self, el1: str, el2: str):
+        """Run a composition sweep at fixed temperature."""
+        fixed_t = self.fixed_temp_spin.value()
+        if self._temp_unit == "C":
+            fixed_t = c_to_k(fixed_t)
+
+        x_min = self.x_min_spin.value()
+        x_max = self.x_max_spin.value()
+        x_step = self.x_step_spin.value()
+
+        if x_min >= x_max:
+            QMessageBox.warning(
+                self, "Composition Range Issue",
+                "X min must be less than X max."
+            )
+            return
+
+        elements = [el1, el2]
+        pressure = self.pressure_spin.value()
+
+        self.calc_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.status_label.setText("Calculating composition sweep...")
+        self.status_label.setStyleSheet("color: #FFB74D;")
+        self.summary_label.setVisible(False)
+        self.sanity_label.setVisible(False)
+
+        self._comp_worker = CompSteppingWorker(
+            self.db, elements, el2, x_min, x_max, x_step, fixed_t, pressure,
+        )
+        self._comp_worker.finished.connect(self._on_comp_calculated)
+        self._comp_worker.start()
+
+    def _on_comp_calculated(self, result: CompositionSteppingResult):
+        """Handle composition sweep results."""
+        self.progress_bar.setVisible(False)
+        self.calc_btn.setEnabled(True)
+
+        if result.error:
+            friendly = self._friendly_error(result.error)
+            self.status_label.setText("Calculation failed")
+            self.status_label.setStyleSheet("color: #E57373;")
+            QMessageBox.critical(self, "Calculation Failed", friendly)
+            return
+
+        self._last_comp_result = result
+        el1 = self.el1_combo.currentText()
+        el2 = self.el2_combo.currentText()
+
+        translated_fracs = {}
+        for phase, fracs in result.phase_fractions.items():
+            label = translate_phase_short(phase)
+            translated_fracs[label] = fracs
+
+        plot_composition_stepping(
+            self.figure, result.compositions, translated_fracs,
+            el2, result.temperature,
+        )
+        self.canvas.draw()
+
+        n_phases = len(result.phase_fractions)
+        self.temps_label.setText("")
+        self.summary_label.setText(
+            f"Composition sweep at {result.temperature:.0f} K "
+            f"({k_to_c(result.temperature):.0f} \u00b0C): "
+            f"{n_phases} phases found across X({el2}) = "
+            f"{result.compositions[0]:.3f} to {result.compositions[-1]:.3f}."
+        )
+        self.summary_label.setVisible(True)
+        self.sanity_label.setVisible(False)
+
+        self.export_csv_btn.setEnabled(True)
+        self.export_png_btn.setEnabled(True)
+        self.status_label.setText(f"Composition sweep complete: {n_phases} phases found")
+        self.status_label.setStyleSheet("color: #81C784;")
+
+        cond = {"T": result.temperature, "X_min": result.compositions[0],
+                "X_max": result.compositions[-1]}
+        self.calculation_done.emit([el1, el2], cond, self.summary_label.text())
+
+    def _calculate_temp_sweep(self, el1: str, el2: str):
+        """Run a temperature sweep at fixed composition (original mode)."""
         t_min = self.t_min_spin.value()
         t_max = self.t_max_spin.value()
         t_step = self.t_step_spin.value()

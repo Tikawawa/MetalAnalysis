@@ -18,8 +18,15 @@ from gui.phase_diagram_panel import PhaseDiagramPanel
 from gui.equilibrium_panel import EquilibriumPanel
 from gui.stepping_panel import SteppingPanel
 from gui.ternary_panel import TernaryPanel
+from gui.scheil_panel import ScheilPanel
+from gui.thermo_properties_panel import ThermoPropertiesPanel
+from gui.single_phase_panel import SinglePhasePanel
+from gui.driving_force_panel import DrivingForcePanel
+from gui.t0_panel import T0Panel
+from gui.volume_panel import VolumePanel
 from gui.history_panel import HistoryPanel
 from gui.phase_info_panel import PhaseInfoPanel
+from gui.database_explorer_panel import DatabaseExplorerPanel
 from gui.styles import DARK_STYLESHEET
 
 
@@ -283,6 +290,20 @@ class MainWindow(QMainWindow):
         self.phase_info_toggle_btn.clicked.connect(self._on_phase_info_toggle)
         toolbar.addWidget(self.phase_info_toggle_btn)
 
+        # DB Explorer toggle button
+        self.db_explorer_toggle_btn = QPushButton("DB Explorer")
+        self.db_explorer_toggle_btn.setCheckable(True)
+        self.db_explorer_toggle_btn.setChecked(False)
+        self.db_explorer_toggle_btn.setFixedSize(110, 28)
+        self.db_explorer_toggle_btn.setStyleSheet(
+            "QPushButton { background-color: #0f3460; color: #4FC3F7; border: 1px solid #4FC3F7; "
+            "border-radius: 4px; font-weight: bold; font-size: 12px; }"
+            "QPushButton:checked { background-color: #2e7d32; color: #C8E6C9; border-color: #66BB6A; }"
+            "QPushButton:hover { background-color: #164a80; }"
+        )
+        self.db_explorer_toggle_btn.clicked.connect(self._on_db_explorer_toggle)
+        toolbar.addWidget(self.db_explorer_toggle_btn)
+
     def _on_temp_toggle(self, checked: bool):
         unit = "C" if checked else "K"
         self.temp_toggle_btn.setText(f"Temp: {unit}")
@@ -298,6 +319,9 @@ class MainWindow(QMainWindow):
 
     def _on_phase_info_toggle(self, checked: bool):
         self.phase_info_panel.setVisible(checked)
+
+    def _on_db_explorer_toggle(self, checked: bool):
+        self.db_explorer_panel.setVisible(checked)
 
     # ------------------------------------------------------------------
     # Dock widgets
@@ -318,6 +342,14 @@ class MainWindow(QMainWindow):
         self.phase_info_panel.setVisible(False)
         self.phase_info_panel.visibilityChanged.connect(
             lambda vis: self.phase_info_toggle_btn.setChecked(vis)
+        )
+
+        # Database explorer panel (right)
+        self.db_explorer_panel = DatabaseExplorerPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.db_explorer_panel)
+        self.db_explorer_panel.setVisible(False)
+        self.db_explorer_panel.visibilityChanged.connect(
+            lambda vis: self.db_explorer_toggle_btn.setChecked(vis)
         )
 
     # ------------------------------------------------------------------
@@ -357,10 +389,19 @@ class MainWindow(QMainWindow):
         self.equilibrium_panel = EquilibriumPanel()
         self.stepping_panel = SteppingPanel()
         self.ternary_panel = TernaryPanel()
+        self.scheil_panel = ScheilPanel()
+        self.thermo_panel = ThermoPropertiesPanel()
+        self.single_phase_panel = SinglePhasePanel()
+        self.driving_force_panel = DrivingForcePanel()
+        self.t0_panel = T0Panel()
+        self.volume_panel = VolumePanel()
 
         for panel in (self.database_panel, self.phase_diagram_panel,
                       self.equilibrium_panel, self.stepping_panel,
-                      self.ternary_panel):
+                      self.ternary_panel, self.scheil_panel,
+                      self.thermo_panel, self.single_phase_panel,
+                      self.driving_force_panel, self.t0_panel,
+                      self.volume_panel):
             panel.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
             )
@@ -370,9 +411,15 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.equilibrium_panel, "Equilibrium")
         self.tabs.addTab(self.stepping_panel, "Stepping")
         self.tabs.addTab(self.ternary_panel, "Ternary")
+        self.tabs.addTab(self.scheil_panel, "Scheil")
+        self.tabs.addTab(self.thermo_panel, "Thermo Props")
+        self.tabs.addTab(self.single_phase_panel, "Phase Calc")
+        self.tabs.addTab(self.driving_force_panel, "Driving Force")
+        self.tabs.addTab(self.t0_panel, "T-Zero")
+        self.tabs.addTab(self.volume_panel, "Volume")
 
         # Disable calculation tabs until database is loaded
-        for i in range(1, 5):
+        for i in range(1, self.tabs.count()):
             self.tabs.setTabEnabled(i, False)
 
         layout.addWidget(self.tabs)
@@ -391,8 +438,8 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._shortcut_open_database)
         self.addAction(open_action)
 
-        # Ctrl+1/2/3/4  - switch tabs
-        for i in range(5):
+        # Ctrl+1..9  - switch tabs
+        for i in range(min(9, self.tabs.count()) if hasattr(self, 'tabs') else 11):
             action = QAction(f"Tab {i+1}", self)
             action.setShortcut(QKeySequence(f"Ctrl+{i+1}"))
             action.triggered.connect(lambda checked, idx=i: self._switch_tab(idx))
@@ -422,15 +469,19 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "CalcPHAD - Keyboard Shortcuts",
-            "Ctrl+O\tOpen TDB database\n"
+            "Ctrl+O\tOpen database (.tdb or .dat)\n"
             "Ctrl+1\tDatabase tab\n"
             "Ctrl+2\tPhase Diagram tab\n"
             "Ctrl+3\tEquilibrium tab\n"
             "Ctrl+4\tStepping tab\n"
             "Ctrl+5\tTernary tab\n"
+            "Ctrl+6\tScheil Solidification tab\n"
+            "Ctrl+7\tThermo Properties tab\n"
+            "Ctrl+8\tPhase Calculator tab\n"
+            "Ctrl+9\tDriving Force tab\n"
             "Ctrl+R\tRun current calculation\n"
             "F1\tShow this help\n\n"
-            "You can also drag and drop .tdb files onto the window.",
+            "You can also drag and drop .tdb or .dat files onto the window.",
         )
 
     def _run_current_calculation(self):
@@ -457,6 +508,12 @@ class MainWindow(QMainWindow):
             self.equilibrium_panel,
             self.stepping_panel,
             self.ternary_panel,
+            self.scheil_panel,
+            self.thermo_panel,
+            self.single_phase_panel,
+            self.driving_force_panel,
+            self.t0_panel,
+            self.volume_panel,
         ]
         for panel in panels:
             if hasattr(panel, "set_temp_unit"):
@@ -469,6 +526,18 @@ class MainWindow(QMainWindow):
         self.equilibrium_panel.calculation_done.connect(self._log_equilibrium)
         self.stepping_panel.calculation_done.connect(self._log_stepping)
         self.ternary_panel.calculation_done.connect(self._log_ternary)
+        self.scheil_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("Scheil", e, c, s))
+        self.thermo_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("Thermo Props", e, c, s))
+        self.single_phase_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("Phase Calc", e, c, s))
+        self.driving_force_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("Driving Force", e, c, s))
+        self.t0_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("T-Zero", e, c, s))
+        self.volume_panel.calculation_done.connect(
+            lambda e, c, s: self.history_panel.add_entry("Volume", e, c, s))
 
         # Connect preset applied signal
         self.database_panel.preset_applied.connect(self._on_preset_applied)
@@ -478,8 +547,11 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int):
         # Map tab index to stepper step (3 steps: Load, Configure & Calculate, Analyze & Export)
-        step_map = {0: 0, 1: 1, 2: 1, 3: 1, 4: 2}
-        self.stepper.set_current_step(step_map.get(index, 0))
+        if index == 0:
+            step = 0
+        else:
+            step = 1  # All calculation tabs are step 1 (Configure & Calculate)
+        self.stepper.set_current_step(step)
 
     def _on_stepper_clicked(self, step: int):
         # Map stepper step to tab index
@@ -498,18 +570,27 @@ class MainWindow(QMainWindow):
 
     def _on_database_loaded(self, db, elements, phases):
         # Enable all tabs
-        for i in range(1, 5):
+        for i in range(1, self.tabs.count()):
             self.tabs.setTabEnabled(i, True)
 
         # Mark step 1 (Load Database) as completed
         self.stepper.mark_completed(0)
         self.stepper.set_current_step(1)
 
-        # Update panels
+        # Update all panels
         self.phase_diagram_panel.update_database(db, elements, phases)
         self.equilibrium_panel.update_database(db, elements, phases)
         self.stepping_panel.update_database(db, elements, phases)
         self.ternary_panel.update_database(db, elements, phases)
+        self.scheil_panel.update_database(db, elements, phases)
+        self.thermo_panel.update_database(db, elements, phases)
+        self.single_phase_panel.update_database(db, elements, phases)
+        self.driving_force_panel.update_database(db, elements, phases)
+        self.t0_panel.update_database(db, elements, phases)
+        self.volume_panel.update_database(db, elements, phases)
+
+        # Update dock widgets
+        self.db_explorer_panel.update_database(db, elements, phases)
 
         self.statusBar().showMessage(
             f"Database loaded: {len(elements)} elements, {len(phases)} phases"
@@ -657,7 +738,7 @@ class MainWindow(QMainWindow):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.toLocalFile().lower().endswith(".tdb"):
+                if url.toLocalFile().lower().endswith((".tdb", ".dat")):
                     event.acceptProposedAction()
                     return
         event.ignore()
@@ -665,7 +746,7 @@ class MainWindow(QMainWindow):
     def dropEvent(self, event: QDropEvent):
         for url in event.mimeData().urls():
             path = url.toLocalFile()
-            if path.lower().endswith(".tdb"):
+            if path.lower().endswith((".tdb", ".dat")):
                 self.tabs.setCurrentIndex(0)
                 self.database_panel.load_file(path)
                 self.statusBar().showMessage(f"Loading dropped file: {os.path.basename(path)}")

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-from pycalphad import Database, equilibrium, variables as v
+from pycalphad import Database, equilibrium, calculate, variables as v
 from pycalphad.mapping import BinaryStrategy, StepStrategy
 
 
@@ -336,4 +336,82 @@ def _stepping_fallback(
             else:
                 result.liquidus = float(temps[liq_indices[-1]])
 
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Composition Stepping (sweep composition at fixed temperature)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CompositionSteppingResult:
+    """Holds results of a composition sweep at fixed temperature."""
+    compositions: np.ndarray = field(default_factory=lambda: np.array([]))
+    phase_fractions: dict[str, np.ndarray] = field(default_factory=dict)
+    temperature: float = 0.0
+    varied_element: str = ""
+    error: str | None = None
+
+    def to_dataframe(self) -> pd.DataFrame:
+        data: dict[str, list] = {f"X({self.varied_element})": list(self.compositions)}
+        for phase, fracs in self.phase_fractions.items():
+            data[f"NP({phase})"] = list(fracs)
+        return pd.DataFrame(data)
+
+
+def calculate_composition_stepping(
+    db: Database,
+    elements: list[str],
+    varied_element: str,
+    comp_min: float = 0.01,
+    comp_max: float = 0.99,
+    comp_step: float = 0.01,
+    temperature: float = 800.0,
+    pressure: float = 101325.0,
+) -> CompositionSteppingResult:
+    """Sweep composition at fixed temperature using point-by-point equilibrium."""
+    result = CompositionSteppingResult(temperature=temperature, varied_element=varied_element)
+    try:
+        comps = sorted([e.upper() for e in elements]) + ["VA"]
+        phases = list(db.phases.keys())
+
+        compositions = np.arange(comp_min, comp_max + comp_step / 2, comp_step)
+        phase_frac_data: dict[str, list[float]] = {}
+
+        for x in compositions:
+            conds = {v.T: temperature, v.P: pressure, v.N: 1,
+                     v.X(varied_element.upper()): float(x)}
+
+            try:
+                eq = equilibrium(db, comps, phases, conds)
+                phase_names = eq.Phase.values.squeeze()
+                np_values = eq.NP.values.squeeze()
+
+                if phase_names.ndim == 0:
+                    phase_names = np.array([phase_names])
+                    np_values = np.array([np_values])
+
+                current_phases = {}
+                for pname, frac in zip(phase_names, np_values):
+                    pname_str = str(pname).strip()
+                    if pname_str and not np.isnan(frac) and frac > 1e-10:
+                        current_phases[pname_str] = current_phases.get(pname_str, 0.0) + float(frac)
+
+                for pname in current_phases:
+                    if pname not in phase_frac_data:
+                        idx = len(compositions[compositions < x])
+                        phase_frac_data[pname] = [0.0] * idx
+
+                for pname in phase_frac_data:
+                    phase_frac_data[pname].append(current_phases.get(pname, 0.0))
+
+            except Exception:
+                for pname in phase_frac_data:
+                    phase_frac_data[pname].append(0.0)
+
+        result.compositions = compositions
+        result.phase_fractions = {k: np.array(v_arr) for k, v_arr in phase_frac_data.items()}
+
+    except Exception:
+        result.error = traceback.format_exc()
     return result

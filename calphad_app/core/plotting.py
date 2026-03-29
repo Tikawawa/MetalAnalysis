@@ -536,6 +536,57 @@ def plot_ternary_isothermal(
     fig.tight_layout()
 
 
+def plot_composition_stepping(
+    fig: Figure,
+    compositions: np.ndarray,
+    phase_fractions: dict[str, np.ndarray],
+    varied_el: str,
+    temperature: float,
+    subtitle: str | None = None,
+    comp_unit: str = "mole_fraction",
+) -> None:
+    """Plot phase fractions vs composition at fixed temperature."""
+    fig.clear()
+    ax = fig.add_subplot(111)
+
+    ax.set_facecolor("#1e1e2e")
+    fig.patch.set_facecolor("#1e1e2e")
+
+    for i, (phase, fracs) in enumerate(phase_fractions.items()):
+        n = min(len(compositions), len(fracs))
+        friendly = translate_phase_short(phase)
+        ax.plot(
+            compositions[:n], fracs[:n],
+            color=get_phase_color(i),
+            label=friendly,
+            linewidth=2,
+        )
+
+    x_label = f"Weight percent {varied_el}" if comp_unit == "weight_percent" else f"Mole fraction {varied_el}"
+    ax.set_xlabel(x_label, color="white", fontsize=12)
+    ax.set_ylabel("Phase Fraction", color="white", fontsize=12)
+
+    temp_c = k_to_c(temperature)
+    title_text = f"Phase Fractions vs Composition at {temperature:.0f} K ({temp_c:.0f} \u00b0C)"
+    if subtitle:
+        title_text += f"\n{subtitle}"
+    ax.set_title(title_text, color="white", fontsize=14, fontweight="bold")
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xlim(compositions[0], compositions[-1])
+
+    ax.tick_params(colors="white")
+    for spine in ax.spines.values():
+        spine.set_color("#555555")
+    ax.grid(True, alpha=0.2, color="#555555")
+
+    legend = ax.legend(fontsize=9, loc="best")
+    legend.get_frame().set_facecolor("#2d2d3e")
+    for text in legend.get_texts():
+        text.set_color("white")
+
+    fig.tight_layout()
+
+
 def plot_isopleth(
     fig: Figure,
     strategy,

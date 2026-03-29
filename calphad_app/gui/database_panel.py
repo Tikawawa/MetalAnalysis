@@ -63,6 +63,15 @@ class DatabaseLoadWorker(QThread):
 
     def run(self):
         try:
+            ext = Path(self.file_path).suffix.lower()
+
+            if ext == ".dat":
+                self.progress.emit("Reading ChemSage DAT file...")
+                db = Database(self.file_path)
+                fixed_text = ""  # DAT files don't use the TDB fixer
+                self.finished.emit(db, fixed_text, "")
+                return
+
             self.progress.emit("Reading TDB file...")
             raw = Path(self.file_path).read_bytes()
 
@@ -156,7 +165,7 @@ class DatabasePanel(QWidget):
         file_layout = QHBoxLayout()
 
         self.file_path_edit = QLineEdit()
-        self.file_path_edit.setPlaceholderText("Select a .tdb database file or drag one here...")
+        self.file_path_edit.setPlaceholderText("Select a .tdb or .dat database file or drag one here...")
         self.file_path_edit.setReadOnly(True)
         self.file_path_edit.setToolTip(
             "Path to the currently selected TDB file. "
@@ -175,6 +184,15 @@ class DatabasePanel(QWidget):
         self.load_btn.setToolTip("Select a .tdb file first using Browse or drag-and-drop")
         self.load_btn.clicked.connect(self._load_database)
         file_layout.addWidget(self.load_btn)
+
+        self.save_btn = QPushButton("Save As TDB")
+        self.save_btn.setObjectName("success")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setToolTip(
+            "Save the currently loaded database as a TDB file"
+        )
+        self.save_btn.clicked.connect(self._save_database)
+        file_layout.addWidget(self.save_btn)
 
         file_group.setLayout(file_layout)
         layout.addWidget(file_group)
@@ -306,7 +324,7 @@ class DatabasePanel(QWidget):
         """Accept drag events that contain file URLs ending in .tdb."""
         if event.mimeData() and event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.isLocalFile() and url.toLocalFile().lower().endswith(".tdb"):
+                if url.isLocalFile() and url.toLocalFile().lower().endswith((".tdb", ".dat")):
                     event.acceptProposedAction()
                     return
         event.ignore()
@@ -319,11 +337,11 @@ class DatabasePanel(QWidget):
             event.ignore()
 
     def dropEvent(self, event):
-        """Handle dropped .tdb files by loading the first valid one."""
+        """Handle dropped database files by loading the first valid one."""
         if event.mimeData() and event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 path = url.toLocalFile()
-                if path.lower().endswith(".tdb"):
+                if path.lower().endswith((".tdb", ".dat")):
                     event.acceptProposedAction()
                     self.load_file(path)
                     return
@@ -354,11 +372,11 @@ class DatabasePanel(QWidget):
 
     def _browse_file(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open TDB Database", "",
-            "TDB Files (*.tdb *.TDB);;All Files (*)"
+            self, "Open Thermodynamic Database", "",
+            "Thermodynamic Databases (*.tdb *.TDB *.dat *.DAT);;TDB Files (*.tdb *.TDB);;ChemSage DAT Files (*.dat *.DAT);;All Files (*)"
         )
         if path:
-            if not path.lower().endswith(".tdb"):
+            if not path.lower().endswith((".tdb", ".dat")):
                 reply = QMessageBox.warning(
                     self, "Non-TDB File Selected",
                     "Selected file does not appear to be a TDB file. Are you sure?",
@@ -455,8 +473,15 @@ class DatabasePanel(QWidget):
             return
 
         self.db = db
-        self.elements = extract_elements(fixed_text)
-        self.phases = extract_phases(fixed_text)
+        ext = Path(self.file_path_edit.text()).suffix.lower()
+        if ext == ".dat" or not fixed_text:
+            # For DAT files or empty fixed_text, extract from Database object
+            self.elements = sorted([str(el) for el in db.elements
+                                    if str(el) not in ("/-", "VA", "")])
+            self.phases = sorted(list(db.phases.keys()))
+        else:
+            self.elements = extract_elements(fixed_text)
+            self.phases = extract_phases(fixed_text)
 
         # Also get phases from pycalphad's parsed result
         if db and db.phases:
@@ -488,6 +513,12 @@ class DatabasePanel(QWidget):
         # BUG 14 fix: update button tooltips now that database is loaded
         self.load_btn.setToolTip("Reload the current TDB file")
 
+        self.save_btn.setEnabled(True)
+
+        ext = Path(self.file_path_edit.text()).suffix.lower()
+        fmt_name = "ChemSage DAT" if ext == ".dat" else "TDB"
+        self.status_label.setText(f"Loaded ({fmt_name}): {Path(self.file_path_edit.text()).name}")
+
         self.database_loaded.emit(db, self.elements, self.phases)
 
         # If a preset was pending, apply it now that the DB is loaded
@@ -497,3 +528,23 @@ class DatabasePanel(QWidget):
             self.preset_applied.emit(preset)
             self.status_label.setText(f"Loaded & applied preset: {preset.name} ({preset.designation})")
             self.status_label.setStyleSheet("color: #81C784;")
+
+    # ------------------------------------------------------------------
+    # Database export
+    # ------------------------------------------------------------------
+
+    def _save_database(self):
+        """Save the currently loaded database as a TDB file."""
+        if not self.db:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Database As", "database.tdb",
+            "TDB Files (*.tdb);;All Files (*)"
+        )
+        if path:
+            try:
+                self.db.to_file(path, if_exists="overwrite")
+                self.status_label.setText(f"Database saved to {path}")
+                self.status_label.setStyleSheet("color: #81C784;")
+            except Exception as e:
+                QMessageBox.critical(self, "Save Failed", str(e))

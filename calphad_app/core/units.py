@@ -77,3 +77,28 @@ def format_composition(value: float, mode: str = "mole_fraction") -> str:
     if mode == "weight_percent":
         return f"{value:.2f} wt%"
     return f"{value:.4f}"
+
+
+# --- Pressure conversion ---
+
+PRESSURE_UNITS: dict[str, float] = {
+    "Pa": 1.0,
+    "bar": 1e5,
+    "atm": 101325.0,
+    "GPa": 1e9,
+}
+
+
+def convert_pressure(value: float, from_unit: str, to_unit: str) -> float:
+    """Convert pressure between units."""
+    pa = value * PRESSURE_UNITS[from_unit]
+    return pa / PRESSURE_UNITS[to_unit]
+
+
+def format_pressure(pa_value: float) -> str:
+    """Format a pressure value in a human-readable way."""
+    if pa_value >= 1e9:
+        return f"{pa_value / 1e9:.2f} GPa"
+    if pa_value >= 1e5:
+        return f"{pa_value / 1e5:.2f} bar"
+    return f"{pa_value:.0f} Pa"

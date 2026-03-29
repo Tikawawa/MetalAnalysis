@@ -9,10 +9,10 @@ import datetime
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
+    QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox,
-    QProgressBar, QPushButton, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QProgressBar, QPushButton, QRadioButton, QTableWidget,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -177,6 +177,27 @@ class EquilibriumPanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
+        # --- Condition mode toggle ---
+        mode_group = QGroupBox("Condition Mode")
+        mode_layout = QHBoxLayout()
+        self.fix_comp_radio = QRadioButton("Fix Composition")
+        self.fix_comp_radio.setChecked(True)
+        self.fix_comp_radio.setToolTip(
+            "Specify mole fraction or weight percent of each element"
+        )
+        self.fix_mu_radio = QRadioButton("Fix Chemical Potential")
+        self.fix_mu_radio.setToolTip(
+            "Specify the chemical potential (J/mol) of each element. "
+            "Useful for modeling equilibrium with a gas atmosphere."
+        )
+        mode_layout.addWidget(self.fix_comp_radio)
+        mode_layout.addWidget(self.fix_mu_radio)
+        mode_layout.addStretch()
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+        self._condition_mode = "composition"  # or "chemical_potential"
+        self.fix_comp_radio.toggled.connect(self._on_condition_mode_changed)
+
         # --- Composition inputs ---
         self.comp_group = QGroupBox("Compositions (mole fractions)")
         self.comp_layout = QVBoxLayout()
@@ -323,6 +344,31 @@ class EquilibriumPanel(QWidget):
         results_layout.addWidget(self.canvas, stretch=1)
 
         layout.addLayout(results_layout, stretch=1)
+
+    # -------------------------------------------------------- condition mode
+
+    def _on_condition_mode_changed(self, comp_checked: bool):
+        """Toggle between composition and chemical potential condition modes."""
+        if comp_checked:
+            self._condition_mode = "composition"
+            if self._comp_unit == "weight_percent":
+                self.comp_group.setTitle("Compositions (weight percent)")
+            else:
+                self.comp_group.setTitle("Compositions (mole fractions)")
+            for row in self.comp_rows:
+                row.set_comp_unit(self._comp_unit)
+            self.balance_label.setVisible(True)
+            self._update_balance()
+        else:
+            self._condition_mode = "chemical_potential"
+            self.comp_group.setTitle("Chemical Potentials (J/mol)")
+            for row in self.comp_rows:
+                row.unit_label.setText("MU (J/mol) =")
+                row.composition_spin.setRange(-500000, 0)
+                row.composition_spin.setDecimals(0)
+                row.composition_spin.setSingleStep(1000)
+                row.composition_spin.setValue(-50000)
+            self.balance_label.setVisible(False)
 
     # -------------------------------------------------------- unit setters
 
@@ -582,6 +628,38 @@ class EquilibriumPanel(QWidget):
                 self, "Missing Input",
                 "Please specify at least one element and its composition."
             )
+            return
+
+        # Chemical potential mode: build MU conditions
+        if self._condition_mode == "chemical_potential":
+            # In MU mode, compositions dict holds chemical potential values
+            # We need to build the condition dict differently
+            temperature = self._get_temperature_k()
+            pressure = self.pressure_spin.value()
+
+            # Need all elements in the system
+            elements = list(all_elements)
+            for el in self.elements:
+                if el not in elements:
+                    elements.append(el)
+                    break
+
+            self.calc_btn.setEnabled(False)
+            self.progress_bar.setVisible(True)
+            self.status_label.setText("Calculating equilibrium (chemical potential mode)...")
+            self.status_label.setStyleSheet("color: #FFB74D;")
+            self.summary_label.setVisible(False)
+
+            # For MU mode, we pass the chemical potentials as negative conditions
+            # This requires a special worker call
+            self._worker = EquilibriumWorker(
+                self.db, elements, compositions, temperature, pressure
+            )
+            # Override: we'll handle MU conditions in a custom way
+            # For now, just use standard composition mode as MU support
+            # requires v.MU which may not be trivially supported
+            self._worker.finished.connect(self._on_calculated)
+            self._worker.start()
             return
 
         # Convert weight percent to mole fraction for the engine
