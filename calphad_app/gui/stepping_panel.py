@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
@@ -18,6 +18,8 @@ from core.calculations import SteppingResult, calculate_stepping, CompositionSte
 from core.plotting import plot_stepping_result, plot_composition_stepping
 from core.presets import get_binary_preset, translate_phase_short, MELTING_POINTS_K
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
+from core.error_helper import build_error_message
+from gui.info_content import TAB_INFO, TOOLTIPS, PHASE_EXPLANATIONS
 
 
 class SteppingWorker(QThread):
@@ -178,6 +180,33 @@ class SteppingPanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("stepping", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
+
         # --- Sweep mode toggle ---
         mode_group = QGroupBox("Sweep Mode")
         mode_layout = QHBoxLayout()
@@ -205,18 +234,12 @@ class SteppingPanel(QWidget):
 
         comp_layout.addWidget(QLabel("Element 1:"))
         self.el1_combo = QComboBox()
-        self.el1_combo.setToolTip(
-            "Primary (balance) element of the alloy. "
-            "This is the solvent, e.g. AL in an aluminum alloy."
-        )
+        self.el1_combo.setToolTip(TOOLTIPS["step_el1"])
         comp_layout.addWidget(self.el1_combo)
 
         comp_layout.addWidget(QLabel("Element 2:"))
         self.el2_combo = QComboBox()
-        self.el2_combo.setToolTip(
-            "Secondary (solute) element. Its amount is set by the "
-            "composition spinner to the right."
-        )
+        self.el2_combo.setToolTip(TOOLTIPS["step_el2"])
         comp_layout.addWidget(self.el2_combo)
 
         self.comp_label = QLabel("X(El2):")
@@ -231,6 +254,16 @@ class SteppingPanel(QWidget):
             "For example, 0.10 means 10% of Element 2."
         )
         comp_layout.addWidget(self.comp_spin)
+
+        # Alloy composition hint (Improvement 10)
+        self.alloy_hint_label = QLabel("")
+        self.alloy_hint_label.setStyleSheet("color: #90CAF9; font-size: 11px;")
+        self.alloy_hint_label.setWordWrap(True)
+        self.alloy_hint_label.setVisible(False)
+        comp_layout.addWidget(self.alloy_hint_label)
+
+        # Connect composition changes to alloy hint updater
+        self.comp_spin.valueChanged.connect(self._update_alloy_hint)
 
         comp_group.setLayout(comp_layout)
         layout.addWidget(comp_group)
@@ -297,6 +330,13 @@ class SteppingPanel(QWidget):
         temp_group.setLayout(temp_layout)
         layout.addWidget(temp_group)
         self.temp_range_group = temp_group
+
+        # Temperature reference bar (Improvement 9)
+        self.temp_ref_label = QLabel(
+            "Room: 298K | Al melts: 933K | Fe melts: 1811K | Steel: ~1800K"
+        )
+        self.temp_ref_label.setStyleSheet("color: #666688; font-size: 11px;")
+        layout.addWidget(self.temp_ref_label)
 
         # --- Composition Sweep Conditions (hidden by default) ---
         self.comp_sweep_group = QGroupBox("Composition Sweep Range")
@@ -493,6 +533,54 @@ class SteppingPanel(QWidget):
                 )
             self.info_label.setStyleSheet("color: #FFB74D;")
             self.info_label.setVisible(True)
+
+    # ------------------------------------------------------------------
+    # Alloy composition hint (Improvement 10)
+    # ------------------------------------------------------------------
+
+    def _update_alloy_hint(self):
+        """Show a hint about common alloys near the current composition."""
+        el1 = self.el1_combo.currentText()
+        el2 = self.el2_combo.currentText()
+        x = self.comp_spin.value()
+
+        # Simple lookup of common alloy compositions
+        hints = {
+            ("AL", "CU"): [
+                (0.04, "2024 (aircraft skin)"),
+                (0.05, "2024"),
+                (0.10, "bronze territory"),
+            ],
+            ("AL", "SI"): [
+                (0.07, "A356 (engine blocks)"),
+                (0.12, "A413 (die casting)"),
+            ],
+            ("AL", "MG"): [
+                (0.04, "5083 (marine grade)"),
+                (0.01, "6061 (structural)"),
+            ],
+            ("FE", "C"): [
+                (0.004, "1045 steel"),
+                (0.008, "1080 spring steel"),
+                (0.02, "cast iron range"),
+            ],
+        }
+
+        key = (el1.upper(), el2.upper())
+        matches = hints.get(key, [])
+        closest = None
+        min_dist = float("inf")
+        for comp, name in matches:
+            dist = abs(x - comp)
+            if dist < min_dist and dist < 0.03:
+                min_dist = dist
+                closest = name
+
+        if closest:
+            self.alloy_hint_label.setText(f"Near this composition: {closest}")
+            self.alloy_hint_label.setVisible(True)
+        else:
+            self.alloy_hint_label.setVisible(False)
 
     # ------------------------------------------------------------------
     # Database update
@@ -711,10 +799,18 @@ class SteppingPanel(QWidget):
         self.calc_btn.setEnabled(True)
 
         if result.error:
-            friendly = self._friendly_error(result.error)
             self.status_label.setText("Calculation failed")
             self.status_label.setStyleSheet("color: #E57373;")
-            QMessageBox.critical(self, "Calculation Failed", friendly)
+            el1 = self.el1_combo.currentText()
+            el2 = self.el2_combo.currentText()
+            friendly, technical = build_error_message(
+                raw_error=result.error, db=self.db,
+                calc_type="composition stepping",
+                elements_used=[el1, el2],
+                temperature=result.temperature,
+            )
+            QMessageBox.warning(self, "Calculation Did Not Succeed",
+                                f"{friendly}\n\n{technical}")
             return
 
         self._last_comp_result = result
@@ -791,13 +887,19 @@ class SteppingPanel(QWidget):
         self.calc_btn.setEnabled(True)
 
         if result.error:
-            friendly = self._friendly_error(result.error)
             self.status_label.setText("Calculation failed")
             self.status_label.setStyleSheet("color: #E57373;")
             self.calc_btn.setEnabled(True)
-            QMessageBox.critical(
-                self, "Calculation Failed", friendly
+            el1 = self.el1_combo.currentText()
+            el2 = self.el2_combo.currentText()
+            friendly, technical = build_error_message(
+                raw_error=result.error, db=self.db,
+                calc_type="temperature stepping",
+                elements_used=[el1, el2],
+                composition={el2: self.comp_spin.value()},
             )
+            QMessageBox.warning(self, "Calculation Did Not Succeed",
+                                f"{friendly}\n\n{technical}")
             return
 
         self._last_result = result

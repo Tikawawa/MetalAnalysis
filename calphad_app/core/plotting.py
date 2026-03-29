@@ -135,6 +135,18 @@ def plot_binary_phase_diagram(
     # --- Labeled phase regions (#14) ---
     _label_phase_regions(ax, strategy, el2, t_min, t_max)
 
+    # Educational annotation (Improvement 20)
+    edu_text = (
+        "Reading this diagram:\n"
+        "- X-axis: composition (how much of each element)\n"
+        "- Y-axis: temperature\n"
+        "- Each colored region is a different phase (crystal structure)\n"
+        "- Boundary lines show where phases change"
+    )
+    ax.text(0.98, 0.02, edu_text, transform=ax.transAxes,
+            fontsize=7, color="#888888", ha="right", va="bottom",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="#1e1e2e", alpha=0.9))
+
     fig.tight_layout(rect=[0, 0, 0.88, 1])
 
 

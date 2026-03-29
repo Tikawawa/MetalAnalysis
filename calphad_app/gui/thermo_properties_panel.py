@@ -21,6 +21,7 @@ from matplotlib.figure import Figure
 from pycalphad import Database, equilibrium, variables as v
 
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
+from gui.info_content import TAB_INFO
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +321,33 @@ class ThermoPropertiesPanel(QWidget):
         title = QLabel("Thermodynamic Properties")
         title.setObjectName("heading")
         layout.addWidget(title)
+
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("thermo_props", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
 
         # --- Alloy Composition group ---
         self.comp_group = QGroupBox("Alloy Composition (mole fractions)")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
@@ -15,6 +15,8 @@ from pycalphad import Database
 from core.calculations import calculate_ternary_isothermal, calculate_isopleth
 from core.plotting import plot_ternary_isothermal, plot_isopleth
 from core.units import k_to_c, c_to_k, format_temp
+from core.error_helper import build_error_message
+from gui.info_content import TAB_INFO
 
 
 class TernaryIsothermalWorker(QThread):
@@ -82,6 +84,33 @@ class TernaryPanel(QWidget):
         title = QLabel("Ternary Phase Diagram")
         title.setObjectName("heading")
         layout.addWidget(title)
+
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("ternary", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
 
         # Element selection
         el_group = QGroupBox("Elements (select 3)")
@@ -340,12 +369,21 @@ class TernaryPanel(QWidget):
         if error:
             self.status_label.setText("Calculation failed")
             self.status_label.setStyleSheet("color: #E57373;")
-            # Extract last line of traceback for user
-            last_line = error.strip().split("\n")[-1] if error else "Unknown error"
+            el1 = self.el1_combo.currentText()
+            el2 = self.el2_combo.currentText()
+            el3 = self.el3_combo.currentText()
+            temp = self.iso_temp_spin.value()
+            if self._temp_unit == "C":
+                temp = c_to_k(temp)
+            friendly, technical = build_error_message(
+                raw_error=error, db=self.db,
+                calc_type="ternary isothermal section",
+                elements_used=[el1, el2, el3],
+                temperature=temp,
+            )
             QMessageBox.warning(
-                self, "Ternary Calculation",
-                f"Could not compute the isothermal section.\n\n{last_line}\n\n"
-                "Try a different temperature or element combination.",
+                self, "Calculation Did Not Succeed",
+                f"{friendly}\n\n{technical}",
             )
             return
 
@@ -382,11 +420,17 @@ class TernaryPanel(QWidget):
         if error:
             self.status_label.setText("Calculation failed")
             self.status_label.setStyleSheet("color: #E57373;")
-            last_line = error.strip().split("\n")[-1] if error else "Unknown error"
+            el1 = self.el1_combo.currentText()
+            el2 = self.el2_combo.currentText()
+            el3 = self.el3_combo.currentText()
+            friendly, technical = build_error_message(
+                raw_error=error, db=self.db,
+                calc_type="isopleth",
+                elements_used=[el1, el2, el3],
+            )
             QMessageBox.warning(
-                self, "Isopleth Calculation",
-                f"Could not compute the isopleth.\n\n{last_line}\n\n"
-                "Try different conditions or element combination.",
+                self, "Calculation Did Not Succeed",
+                f"{friendly}\n\n{technical}",
             )
             return
 

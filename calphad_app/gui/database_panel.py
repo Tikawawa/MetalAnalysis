@@ -480,7 +480,8 @@ class DatabasePanel(QWidget):
                                     if str(el) not in ("/-", "VA", "")])
             self.phases = sorted(list(db.phases.keys()))
         else:
-            self.elements = extract_elements(fixed_text)
+            self.elements = [el for el in extract_elements(fixed_text)
+                            if el not in ("VA", "/-", "")]
             self.phases = extract_phases(fixed_text)
 
         # Also get phases from pycalphad's parsed result

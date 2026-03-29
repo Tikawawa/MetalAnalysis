@@ -26,6 +26,7 @@ from pycalphad import Database, calculate, variables as v
 
 from core.presets import translate_phase_short
 from core.units import k_to_c, c_to_k, format_temp
+from gui.info_content import TAB_INFO
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -187,6 +188,33 @@ class SinglePhasePanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("single_phase", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
+
         # --- Elements ---
         el_group = QGroupBox("Elements")
         el_layout = QHBoxLayout()
@@ -217,6 +245,15 @@ class SinglePhasePanel(QWidget):
         self.deselect_all_btn = QPushButton("Deselect All")
         self.deselect_all_btn.clicked.connect(self._deselect_all_phases)
         btn_row.addWidget(self.deselect_all_btn)
+
+        self.select_common_btn = QPushButton("Select Common")
+        self.select_common_btn.setToolTip(
+            "Select only the most common phases: LIQUID, FCC (aluminum/copper), "
+            "BCC (iron/steel), HCP (titanium/magnesium). These are the phases "
+            "you'll encounter most often."
+        )
+        self.select_common_btn.clicked.connect(self._select_common_phases)
+        btn_row.addWidget(self.select_common_btn)
 
         btn_row.addStretch()
         self.phase_counter_label = QLabel("0 phases selected")
@@ -437,13 +474,19 @@ class SinglePhasePanel(QWidget):
         # Phase list
         self.phase_list.blockSignals(True)
         self.phase_list.clear()
+        # Common phases to auto-check (user-friendly defaults)
+        _COMMON_PHASES = {"LIQUID", "FCC_A1", "BCC_A2", "HCP_A3", "BCC_B2",
+                          "DIAMOND_A4", "CEMENTITE", "AL2CU", "MG2SI"}
         for phase in phases:
             short = translate_phase_short(phase)
             label = f"{phase}  ({short})" if short != phase else phase
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, phase)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            if phase in _COMMON_PHASES:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
             self.phase_list.addItem(item)
         self.phase_list.blockSignals(False)
         self._update_phase_counter()
@@ -485,6 +528,22 @@ class SinglePhasePanel(QWidget):
             item = self.phase_list.item(idx)
             if item is not None:
                 item.setCheckState(Qt.CheckState.Unchecked)
+        self.phase_list.blockSignals(False)
+        self._update_phase_counter()
+
+    def _select_common_phases(self):
+        """Select only common/fundamental phases."""
+        common = {"LIQUID", "FCC_A1", "BCC_A2", "HCP_A3", "BCC_B2",
+                  "DIAMOND_A4", "CEMENTITE", "AL2CU", "MG2SI"}
+        self.phase_list.blockSignals(True)
+        for idx in range(self.phase_list.count()):
+            item = self.phase_list.item(idx)
+            if item is not None:
+                phase = item.data(Qt.ItemDataRole.UserRole)
+                if phase in common:
+                    item.setCheckState(Qt.CheckState.Checked)
+                else:
+                    item.setCheckState(Qt.CheckState.Unchecked)
         self.phase_list.blockSignals(False)
         self._update_phase_counter()
 

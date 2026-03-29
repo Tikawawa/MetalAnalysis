@@ -4,8 +4,9 @@ keyboard shortcuts, drag-and-drop support, and welcome dialog."""
 from __future__ import annotations
 
 import os
+import random
 
-from PyQt6.QtCore import Qt, pyqtSignal, QSettings, QMimeData
+from PyQt6.QtCore import Qt, pyqtSignal, QSettings, QMimeData, QTimer
 from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QMainWindow, QStatusBar, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
@@ -27,6 +28,9 @@ from gui.volume_panel import VolumePanel
 from gui.history_panel import HistoryPanel
 from gui.phase_info_panel import PhaseInfoPanel
 from gui.database_explorer_panel import DatabaseExplorerPanel
+from gui.glossary_panel import GlossaryPanel
+from gui.tutorial_overlay import TutorialOverlay
+from gui.info_content import DID_YOU_KNOW
 from gui.styles import DARK_STYLESHEET
 
 
@@ -199,6 +203,7 @@ class MainWindow(QMainWindow):
 
     temp_unit_changed = pyqtSignal(str)   # "K" or "C"
     comp_unit_changed = pyqtSignal(str)   # "wt%" or "mol"
+    learning_mode_changed = pyqtSignal(bool)  # True = learning, False = expert
 
     def __init__(self):
         super().__init__()
@@ -216,8 +221,19 @@ class MainWindow(QMainWindow):
         self._setup_shortcuts()
         self._connect_signals()
 
+        # Learning mode state (default ON)
+        self._learning_mode = True
+
         # Show welcome dialog on first launch
         self._maybe_show_welcome()
+
+        # Apply initial learning mode state (hide advanced tabs, rename)
+        self._on_learning_mode_toggle(True)
+
+        # "Did You Know?" rotating facts in status bar
+        self._fact_timer = QTimer(self)
+        self._fact_timer.timeout.connect(self._rotate_did_you_know)
+        self._fact_timer.start(30000)  # Every 30 seconds
 
     # ------------------------------------------------------------------
     # Toolbar with unit toggles
@@ -304,6 +320,35 @@ class MainWindow(QMainWindow):
         self.db_explorer_toggle_btn.clicked.connect(self._on_db_explorer_toggle)
         toolbar.addWidget(self.db_explorer_toggle_btn)
 
+        # Glossary toggle button
+        self.glossary_toggle_btn = QPushButton("Glossary")
+        self.glossary_toggle_btn.setCheckable(True)
+        self.glossary_toggle_btn.setChecked(False)
+        self.glossary_toggle_btn.setFixedSize(90, 28)
+        self.glossary_toggle_btn.setStyleSheet(
+            "QPushButton { background-color: #0f3460; color: #4FC3F7; border: 1px solid #4FC3F7; "
+            "border-radius: 4px; font-weight: bold; font-size: 12px; }"
+            "QPushButton:checked { background-color: #2e7d32; color: #C8E6C9; border-color: #66BB6A; }"
+            "QPushButton:hover { background-color: #164a80; }"
+        )
+        self.glossary_toggle_btn.clicked.connect(self._on_glossary_toggle)
+        toolbar.addWidget(self.glossary_toggle_btn)
+
+        toolbar.addSeparator()
+
+        # Learning Mode / Expert Mode toggle
+        self.learning_mode_btn = QPushButton("Learning Mode")
+        self.learning_mode_btn.setCheckable(True)
+        self.learning_mode_btn.setChecked(True)  # Default to learning mode ON
+        self.learning_mode_btn.setStyleSheet(
+            "QPushButton { background-color: #7B1FA2; color: #CE93D8; border: 1px solid #CE93D8; "
+            "border-radius: 4px; font-weight: bold; font-size: 12px; }"
+            "QPushButton:checked { background-color: #4A148C; color: #E1BEE7; border-color: #BA68C8; }"
+            "QPushButton:hover { background-color: #6A1B9A; }"
+        )
+        self.learning_mode_btn.clicked.connect(self._on_learning_mode_toggle)
+        toolbar.addWidget(self.learning_mode_btn)
+
     def _on_temp_toggle(self, checked: bool):
         unit = "C" if checked else "K"
         self.temp_toggle_btn.setText(f"Temp: {unit}")
@@ -322,6 +367,38 @@ class MainWindow(QMainWindow):
 
     def _on_db_explorer_toggle(self, checked: bool):
         self.db_explorer_panel.setVisible(checked)
+
+    def _on_glossary_toggle(self, checked: bool):
+        self.glossary_panel.setVisible(checked)
+
+    def _on_learning_mode_toggle(self, checked: bool):
+        """Toggle between Learning Mode and Expert Mode."""
+        self._learning_mode = checked
+        self.learning_mode_btn.setText("Learning Mode" if checked else "Expert Mode")
+
+        # Show/hide advanced tabs
+        advanced_tab_names = {"Thermo Props", "Phase Calc", "Driving Force", "T-Zero", "Volume"}
+        for i in range(self.tabs.count()):
+            tab_name = self.tabs.tabText(i)
+            if tab_name in advanced_tab_names:
+                self.tabs.setTabVisible(i, not checked)
+
+        # Rename tabs in learning mode
+        if checked:
+            for i in range(self.tabs.count()):
+                name = self.tabs.tabText(i)
+                renames = {"Stepping": "Melting Sim", "Scheil": "Casting Sim", "Equilibrium": "Alloy Analyzer"}
+                if name in renames:
+                    self.tabs.setTabText(i, renames[name])
+        else:
+            # Restore original names
+            originals = {5: "Scheil", 3: "Stepping", 2: "Equilibrium"}
+            for idx, name in originals.items():
+                if idx < self.tabs.count():
+                    self.tabs.setTabText(idx, name)
+
+        # Broadcast to all panels
+        self.learning_mode_changed.emit(checked)
 
     # ------------------------------------------------------------------
     # Dock widgets
@@ -350,6 +427,14 @@ class MainWindow(QMainWindow):
         self.db_explorer_panel.setVisible(False)
         self.db_explorer_panel.visibilityChanged.connect(
             lambda vis: self.db_explorer_toggle_btn.setChecked(vis)
+        )
+
+        # Glossary panel (right)
+        self.glossary_panel = GlossaryPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.glossary_panel)
+        self.glossary_panel.setVisible(False)
+        self.glossary_panel.visibilityChanged.connect(
+            lambda vis: self.glossary_toggle_btn.setChecked(vis)
         )
 
     # ------------------------------------------------------------------
@@ -468,21 +553,36 @@ class MainWindow(QMainWindow):
     def _show_help(self):
         QMessageBox.information(
             self,
-            "CalcPHAD - Keyboard Shortcuts",
+            "CalcPHAD - Keyboard Shortcuts & Features",
+            "Keyboard Shortcuts:\n"
             "Ctrl+O\tOpen database (.tdb or .dat)\n"
             "Ctrl+1\tDatabase tab\n"
             "Ctrl+2\tPhase Diagram tab\n"
-            "Ctrl+3\tEquilibrium tab\n"
-            "Ctrl+4\tStepping tab\n"
+            "Ctrl+3\tEquilibrium / Alloy Analyzer tab\n"
+            "Ctrl+4\tStepping / Melting Sim tab\n"
             "Ctrl+5\tTernary tab\n"
-            "Ctrl+6\tScheil Solidification tab\n"
+            "Ctrl+6\tScheil / Casting Sim tab\n"
             "Ctrl+7\tThermo Properties tab\n"
             "Ctrl+8\tPhase Calculator tab\n"
             "Ctrl+9\tDriving Force tab\n"
             "Ctrl+R\tRun current calculation\n"
             "F1\tShow this help\n\n"
-            "You can also drag and drop .tdb or .dat files onto the window.",
+            "Features:\n"
+            "- Learning Mode: Simplifies the interface for beginners.\n"
+            "  Hides advanced tabs, renames tabs to friendlier names.\n"
+            "  Toggle with the purple button in the toolbar.\n"
+            "- Expert Mode: Shows all tabs with original names.\n"
+            "- Glossary: Searchable dictionary of metallurgical terms.\n"
+            "- Did You Know?: Rotating facts in the status bar.\n"
+            "- Drag and drop .tdb or .dat files onto the window.\n"
+            "- Info panels on each calculation tab explain the concepts.",
         )
+
+    def _rotate_did_you_know(self):
+        """Show a random 'Did You Know?' fact in the status bar."""
+        if self._learning_mode:
+            fact = random.choice(DID_YOU_KNOW)
+            self.statusBar().showMessage(f"Did you know? {fact}", 15000)
 
     def _run_current_calculation(self):
         current = self.tabs.currentIndex()
@@ -595,6 +695,10 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"Database loaded: {len(elements)} elements, {len(phases)} phases"
         )
+
+        # In learning mode, auto-switch to Phase Diagram tab
+        if self._learning_mode:
+            self.tabs.setCurrentIndex(1)
 
     # ------------------------------------------------------------------
     # Preset auto-fill
@@ -778,6 +882,9 @@ class MainWindow(QMainWindow):
                 self._load_sample_database()
             elif dialog.result_action == "open":
                 self._shortcut_open_database()
+
+        # Show tutorial on first launch
+        TutorialOverlay.show_if_first_launch(self)
 
     def _load_sample_database(self):
         """Load the bundled COST507.tdb sample database."""

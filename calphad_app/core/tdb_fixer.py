@@ -106,7 +106,7 @@ def extract_elements(tdb_text: str) -> list[str]:
             parts = stripped.split()
             if len(parts) >= 2:
                 el = parts[1]
-                if el not in ("/-", "%", "*") and el not in elements:
+                if el not in ("/-", "VA", "%", "*", "/", "") and el not in elements:
                     elements.append(el)
     return elements
 

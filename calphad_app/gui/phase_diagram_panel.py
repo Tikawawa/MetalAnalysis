@@ -16,6 +16,8 @@ from core.calculations import calculate_binary_phase_diagram
 from core.plotting import plot_binary_phase_diagram
 from core.presets import get_binary_preset, translate_phase_short
 from core.units import k_to_c, c_to_k, format_temp
+from core.error_helper import build_error_message
+from gui.info_content import TAB_INFO
 
 
 class PhaseDiagramWorker(QThread):
@@ -62,6 +64,33 @@ class PhaseDiagramPanel(QWidget):
         title = QLabel("Binary Phase Diagram")
         title.setObjectName("heading")
         layout.addWidget(title)
+
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("phase_diagram", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
 
         # Controls
         controls_group = QGroupBox("Parameters")
@@ -390,11 +419,19 @@ class PhaseDiagramPanel(QWidget):
             self.status_label.setStyleSheet("color: #E57373;")
             self.summary_label.setText("")
 
-            # Friendly error messages instead of raw tracebacks
-            friendly = self._friendly_error(error)
-            QMessageBox.critical(
-                self, "Calculation Error",
-                f"Phase diagram calculation failed.\n\n{friendly}"
+            el1 = self.el1_combo.currentText()
+            el2 = self.el2_combo.currentText()
+            friendly, technical = build_error_message(
+                raw_error=error, db=self.db,
+                calc_type="phase diagram",
+                elements_used=[el1, el2],
+                temperature=self._last_t_max_k,
+            )
+            QMessageBox.warning(
+                self, "Calculation Did Not Succeed",
+                f"{friendly}\n\n"
+                f"(Technical details below if you need to share them with a developer.)\n\n"
+                f"{technical}"
             )
             return
 

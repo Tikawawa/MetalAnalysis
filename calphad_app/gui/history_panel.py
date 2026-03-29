@@ -7,7 +7,7 @@ from datetime import datetime
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QListWidget, QListWidgetItem, QLabel, QPushButton,
+    QListWidget, QListWidgetItem, QLabel, QPushButton, QTextEdit,
 )
 
 
@@ -23,6 +23,7 @@ class HistoryPanel(QDockWidget):
             Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
         self._entries: list[dict] = []
+        self._notes: dict[int, str] = {}  # index -> user note text
         self._setup_ui()
 
     def _setup_ui(self):
@@ -72,6 +73,27 @@ class HistoryPanel(QDockWidget):
         self.rerun_btn.setToolTip("Re-run the selected calculation with the same parameters.")
         self.rerun_btn.clicked.connect(self._on_rerun_clicked)
         layout.addWidget(self.rerun_btn)
+
+        # Notes field for the selected entry (Improvement 17)
+        notes_label = QLabel("Notes:")
+        notes_label.setStyleSheet(
+            "color: #90CAF9; font-size: 12px; font-weight: bold; padding: 2px;"
+        )
+        layout.addWidget(notes_label)
+
+        self.notes_edit = QTextEdit()
+        self.notes_edit.setPlaceholderText(
+            "Type notes about the selected calculation here..."
+        )
+        self.notes_edit.setStyleSheet(
+            "QTextEdit { background-color: #16213e; color: #e0e0e0; "
+            "border: 1px solid #333355; border-radius: 4px; "
+            "font-size: 12px; padding: 4px; }"
+        )
+        self.notes_edit.setMaximumHeight(80)
+        self.notes_edit.setEnabled(False)
+        self.notes_edit.textChanged.connect(self._on_notes_changed)
+        layout.addWidget(self.notes_edit)
 
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
@@ -134,9 +156,19 @@ class HistoryPanel(QDockWidget):
         if row < 0 or row >= len(self._entries):
             self.detail_label.setText("Select an entry to see details.")
             self.rerun_btn.setEnabled(False)
+            self.notes_edit.setEnabled(False)
+            self.notes_edit.blockSignals(True)
+            self.notes_edit.clear()
+            self.notes_edit.blockSignals(False)
             return
 
         self.rerun_btn.setEnabled(True)
+        self.notes_edit.setEnabled(True)
+
+        # Load saved notes for this entry
+        self.notes_edit.blockSignals(True)
+        self.notes_edit.setPlainText(self._notes.get(row, ""))
+        self.notes_edit.blockSignals(False)
 
         entry = self._entries[row]
         ts = entry["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
@@ -159,6 +191,17 @@ class HistoryPanel(QDockWidget):
         )
         self.detail_label.setText(detail)
 
+    def _on_notes_changed(self):
+        """Save notes for the currently selected history entry."""
+        row = self.list_widget.currentRow()
+        if row < 0 or row >= len(self._entries):
+            return
+        text = self.notes_edit.toPlainText()
+        if text.strip():
+            self._notes[row] = text
+        elif row in self._notes:
+            del self._notes[row]
+
     def _on_rerun_clicked(self):
         row = self.list_widget.currentRow()
         if row < 0 or row >= len(self._entries):
@@ -170,6 +213,11 @@ class HistoryPanel(QDockWidget):
 
     def _clear_history(self):
         self._entries.clear()
+        self._notes.clear()
         self.list_widget.clear()
         self.detail_label.setText("History cleared.")
         self.rerun_btn.setEnabled(False)
+        self.notes_edit.setEnabled(False)
+        self.notes_edit.blockSignals(True)
+        self.notes_edit.clear()
+        self.notes_edit.blockSignals(False)

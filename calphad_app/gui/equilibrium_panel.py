@@ -7,7 +7,7 @@ from __future__ import annotations
 import io
 import datetime
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox,
@@ -22,6 +22,8 @@ from core.calculations import EquilibriumResult, calculate_equilibrium_point
 from core.plotting import plot_equilibrium_bar
 from core.presets import translate_phase_short, translate_phase_name
 from core.units import k_to_c, format_temp, mole_to_weight, weight_to_mole
+from core.error_helper import build_error_message
+from gui.info_content import TAB_INFO, TOOLTIPS, PHASE_EXPLANATIONS
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +106,7 @@ class CompositionRow(QWidget):
 
         self.element_combo = QComboBox()
         self.element_combo.addItems(elements)
-        self.element_combo.setToolTip(
-            "Select the alloying element whose composition you want to set. "
-            "The balance element (the remainder to reach 100%) is determined "
-            "automatically."
-        )
+        self.element_combo.setToolTip(TOOLTIPS["eq_element_combo"])
         layout.addWidget(self.element_combo)
 
         self.unit_label = QLabel(self._label_text())
@@ -116,10 +114,7 @@ class CompositionRow(QWidget):
 
         self.composition_spin = QDoubleSpinBox()
         self._apply_unit_range()
-        self.composition_spin.setToolTip(
-            "Composition of this element. The balance element makes up the "
-            "remainder so that all fractions sum to 1 (or all wt% sum to 100)."
-        )
+        self.composition_spin.setToolTip(TOOLTIPS["eq_composition"])
         layout.addWidget(self.composition_spin)
 
     # --- unit helpers ---
@@ -177,6 +172,33 @@ class EquilibriumPanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
+        # --- Educational info panel ---
+        info_data = TAB_INFO.get("equilibrium", {})
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
+        info_text = QLabel()
+        info_text.setWordWrap(True)
+        info_text.setTextFormat(Qt.TextFormat.RichText)
+        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        simple = info_data.get("simple", "")
+        analogy = info_data.get("analogy", "")
+        tips = info_data.get("tips", [])
+        tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        info_text.setText(
+            f'<p style="color: #e0e0e0;">{simple}</p>'
+            f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
+            f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
+        )
+        info_layout.addWidget(info_text)
+        self.info_group.setLayout(info_layout)
+        layout.addWidget(self.info_group)
+        self.info_group.toggled.connect(lambda checked: [
+            w.setVisible(checked) for w in [info_text]
+        ])
+        info_text.setVisible(False)
+
         # --- Condition mode toggle ---
         mode_group = QGroupBox("Condition Mode")
         mode_layout = QHBoxLayout()
@@ -204,10 +226,7 @@ class EquilibriumPanel(QWidget):
 
         comp_btn_layout = QHBoxLayout()
         self.add_comp_btn = QPushButton("+ Add Element")
-        self.add_comp_btn.setToolTip(
-            "Add another alloying element row. The first element not yet used "
-            "will be selected automatically."
-        )
+        self.add_comp_btn.setToolTip(TOOLTIPS["eq_add_element"])
         self.add_comp_btn.clicked.connect(self._add_composition_row)
         self.add_comp_btn.setEnabled(False)
         comp_btn_layout.addWidget(self.add_comp_btn)
@@ -228,10 +247,7 @@ class EquilibriumPanel(QWidget):
 
         # Balance indicator
         self.balance_label = QLabel("")
-        self.balance_label.setToolTip(
-            "Live composition balance. Shows each element and the total. "
-            "Turns red if the total exceeds the allowed maximum."
-        )
+        self.balance_label.setToolTip(TOOLTIPS["eq_balance"])
         self.balance_label.setStyleSheet(
             "padding: 4px; font-weight: bold;"
         )
@@ -250,10 +266,7 @@ class EquilibriumPanel(QWidget):
         self.temp_spin.setRange(100, 5000)
         self.temp_spin.setValue(800)
         self.temp_spin.setSingleStep(10)
-        self.temp_spin.setToolTip(
-            "Temperature for equilibrium calculation. "
-            "Room temp = 298 K (25 C). Al melts at 933 K (660 C)."
-        )
+        self.temp_spin.setToolTip(TOOLTIPS["eq_temperature"])
         cond_layout.addWidget(self.temp_spin)
 
         cond_layout.addWidget(QLabel("Pressure (Pa):"))
@@ -262,44 +275,45 @@ class EquilibriumPanel(QWidget):
         self.pressure_spin.setValue(101325)
         self.pressure_spin.setDecimals(0)
         self.pressure_spin.setSingleStep(1000)
-        self.pressure_spin.setToolTip(
-            "Pressure in Pascals. 101325 Pa = 1 atmosphere (standard)."
-        )
+        self.pressure_spin.setToolTip(TOOLTIPS["eq_pressure"])
         cond_layout.addWidget(self.pressure_spin)
+
+        # Unit context helper for pressure (Improvement 14)
+        pressure_help = QLabel("(1 atm = 101,325 Pa)")
+        pressure_help.setStyleSheet("color: #666688; font-size: 10px;")
+        cond_layout.addWidget(pressure_help)
 
         cond_layout.addStretch()
         cond_group.setLayout(cond_layout)
         layout.addWidget(cond_group)
+
+        # Temperature reference bar (Improvement 9)
+        self.temp_ref_label = QLabel(
+            "Room: 298K | Al melts: 933K | Fe melts: 1811K | Steel: ~1800K"
+        )
+        self.temp_ref_label.setStyleSheet("color: #666688; font-size: 11px;")
+        layout.addWidget(self.temp_ref_label)
 
         # --- Buttons ---
         btn_layout = QHBoxLayout()
         self.calc_btn = QPushButton("Calculate Equilibrium")
         self.calc_btn.setObjectName("primary")
         self.calc_btn.setEnabled(False)
-        self.calc_btn.setToolTip(
-            "Run the equilibrium calculation at the specified temperature, "
-            "pressure, and composition."
-        )
+        self.calc_btn.setToolTip(TOOLTIPS["eq_calculate"])
         self.calc_btn.clicked.connect(self._calculate)
         btn_layout.addWidget(self.calc_btn)
 
         self.export_csv_btn = QPushButton("Export CSV")
         self.export_csv_btn.setObjectName("success")
         self.export_csv_btn.setEnabled(False)
-        self.export_csv_btn.setToolTip(
-            "Save the results table as a CSV file. Calculation conditions are "
-            "included as comment lines at the top of the file."
-        )
+        self.export_csv_btn.setToolTip(TOOLTIPS["eq_export_csv"])
         self.export_csv_btn.clicked.connect(self._export_csv)
         btn_layout.addWidget(self.export_csv_btn)
 
         self.export_png_btn = QPushButton("Export PNG")
         self.export_png_btn.setObjectName("success")
         self.export_png_btn.setEnabled(False)
-        self.export_png_btn.setToolTip(
-            "Save the bar chart as a PNG image. A subtitle with the "
-            "calculation conditions is added automatically."
-        )
+        self.export_png_btn.setToolTip(TOOLTIPS["eq_export_png"])
         self.export_png_btn.clicked.connect(self._export_png)
         btn_layout.addWidget(self.export_png_btn)
 
@@ -384,18 +398,12 @@ class EquilibriumPanel(QWidget):
             self.temp_label.setText("Temperature (C):")
             self.temp_spin.setRange(-173, 4727)
             self.temp_spin.setValue(k_to_c(old_val))
-            self.temp_spin.setToolTip(
-                "Temperature in Celsius. Room temp = 25 C. "
-                "Al melts at 660 C (933 K)."
-            )
+            self.temp_spin.setToolTip(TOOLTIPS["eq_temperature_c"])
         else:
             self.temp_label.setText("Temperature (K):")
             self.temp_spin.setRange(100, 5000)
             self.temp_spin.setValue(old_val + 273.15)
-            self.temp_spin.setToolTip(
-                "Temperature for equilibrium calculation. "
-                "Room temp = 298 K (25 C). Al melts at 933 K (660 C)."
-            )
+            self.temp_spin.setToolTip(TOOLTIPS["eq_temperature"])
 
     def set_comp_unit(self, unit: str):
         """Switch composition between 'mole_fraction' and 'weight_percent'."""
@@ -419,11 +427,12 @@ class EquilibriumPanel(QWidget):
                 el = row.element_combo.currentText()
                 current_vals[el] = row.composition_spin.value()
 
-            # Determine balance element and add it to make a complete composition
+            # Determine balance element (skip VA and special symbols)
             used = set(current_vals.keys())
+            _SKIP_CV = {"VA", "/-", "", "*", "%"}
             balance_el = None
             for el in self.elements:
-                if el not in used:
+                if el not in used and el.upper() not in _SKIP_CV:
                     balance_el = el
                     break
 
@@ -531,19 +540,28 @@ class EquilibriumPanel(QWidget):
             used_elements.add(el)
             parts.append(f"{el}: {val:{fmt}}{unit_str}")
 
-        # Determine balance element
+        # Determine balance element (skip VA and special symbols)
+        _SKIP = {"VA", "/-", "", "*", "%"}
         balance_el = None
         for el in self.elements:
-            if el not in used_elements:
+            if el not in used_elements and el.upper() not in _SKIP:
                 balance_el = el
                 break
 
         if balance_el is not None:
-            balance_val = limit - total
-            parts.insert(0, f"{balance_el}: balance")
+            balance_val = max(0.0, limit - total)
+            parts.insert(0, f"{balance_el}: {balance_val:{fmt}}{unit_str} (balance)")
 
         total_display = f"{total:{fmt}}{unit_str}"
         text = " | ".join(parts) + f" | Total: {total_display}"
+
+        # Warn when all compositions are specified
+        if balance_el is None and total >= limit - 0.001 and used_elements:
+            largest_el = max(
+                ((r.element_combo.currentText(), r.composition_spin.value()) for r in self.comp_rows),
+                key=lambda x: x[1],
+            )[0]
+            text += f"\n\u26a0 {largest_el} will be auto-used as balance element"
 
         over_limit = total > limit + (0.01 if is_wt else 0.0001)
         if over_limit:
@@ -630,6 +648,18 @@ class EquilibriumPanel(QWidget):
             )
             return
 
+        # Beginner-friendly warnings (Improvement 16)
+        if len(all_elements) < 2 and len(self.elements) >= 2:
+            reply = QMessageBox.question(
+                self, "Only One Element?",
+                "You only specified one alloying element. The calculation will use "
+                "this element plus a 'balance' element (the base metal).\n\n"
+                "Is that what you intended?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
         # Chemical potential mode: build MU conditions
         if self._condition_mode == "chemical_potential":
             # In MU mode, compositions dict holds chemical potential values
@@ -674,10 +704,11 @@ class EquilibriumPanel(QWidget):
                     f"(including the balance element) does not exceed 100%."
                 )
                 return
-            # Determine balance element
+            # Determine balance element (skip VA and special symbols)
+            _SKIP_WT = {"VA", "/-", "", "*", "%"}
             balance_el = None
             for el in self.elements:
-                if el not in all_elements:
+                if el not in all_elements and el.upper() not in _SKIP_WT:
                     balance_el = el
                     break
             if balance_el:
@@ -700,10 +731,19 @@ class EquilibriumPanel(QWidget):
                 )
                 return
 
-        # The balance element is needed
+        # If user specified all elements (total ~1.0), auto-remove the largest
+        # to use as the balance element — pycalphad needs one degree of freedom
+        total_check = sum(compositions.values())
+        if total_check > 0.9999:
+            balance_el = max(compositions, key=compositions.get)
+            del compositions[balance_el]
+            all_elements.discard(balance_el)
+
+        # Add a balance element (skip VA and special symbols)
+        _SKIP = {"VA", "/-", "", "*", "%"}
         elements = list(all_elements)
         for el in self.elements:
-            if el not in elements:
+            if el not in elements and el.upper() not in _SKIP:
                 elements.append(el)
                 break  # Just add one balance element
 
@@ -729,13 +769,22 @@ class EquilibriumPanel(QWidget):
         self.calc_btn.setEnabled(True)
 
         if result.error:
-            friendly = _friendly_error(result.error)
             self.status_label.setText("Calculation failed")
             self.status_label.setStyleSheet("color: #E57373;")
+            elements_used = [r.element_combo.currentText() for r in self.comp_rows]
+            comp_dict = {r.element_combo.currentText(): r.composition_spin.value() for r in self.comp_rows}
+            friendly, technical = build_error_message(
+                raw_error=result.error, db=self.db,
+                calc_type="equilibrium",
+                elements_used=elements_used,
+                temperature=result.temperature,
+                composition=comp_dict,
+            )
             QMessageBox.warning(
                 self, "Calculation Did Not Succeed",
-                f"{friendly}\n\n(Technical details are below if you need to "
-                f"share them with a developer.)\n\n{result.error[-300:]}"
+                f"{friendly}\n\n"
+                f"(Technical details below if you need to share them with a developer.)\n\n"
+                f"{technical}"
             )
             return
 
@@ -767,6 +816,13 @@ class EquilibriumPanel(QWidget):
         self.results_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
+
+        # Phase name decoder popup (Improvement 6)
+        try:
+            self.results_table.cellClicked.disconnect(self._on_phase_clicked)
+        except TypeError:
+            pass  # Not connected yet
+        self.results_table.cellClicked.connect(self._on_phase_clicked)
 
         # --- Update chart ---
         plot_equilibrium_bar(
@@ -818,8 +874,46 @@ class EquilibriumPanel(QWidget):
             state = "The alloy is fully solid."
 
         summary = f"At {temp_str}, your alloy is {phase_desc}. {state}"
+
+        # --- Educational "What does this mean?" section ---
+        edu_lines: list[str] = []
+        for phase in result.phases:
+            phase_upper = phase.upper()
+            info = PHASE_EXPLANATIONS.get(phase_upper) or PHASE_EXPLANATIONS.get(phase)
+            if info and isinstance(info, dict):
+                name = info.get("name", phase)
+                desc = info.get("description", "")
+                found = info.get("found_in", "")
+                line = f"  {name}: {desc}"
+                if found:
+                    line += f" Found in: {found}."
+                edu_lines.append(line)
+        if edu_lines:
+            summary += "\n\nWhat does this mean?\n" + "\n".join(edu_lines)
+
         self.summary_label.setText(summary)
         self.summary_label.setVisible(True)
+
+    # ------------------------------------------------- phase decoder popup
+
+    def _on_phase_clicked(self, row: int, col: int):
+        """Show educational popup when a phase name cell is clicked."""
+        if col != 0:  # Only phase name column
+            return
+        item = self.results_table.item(row, 0)
+        if not item:
+            return
+        phase_raw = item.text().split("(")[0].strip()
+        from gui.info_content import PHASE_EXPLANATIONS
+        info = PHASE_EXPLANATIONS.get(phase_raw, {})
+        if info:
+            QMessageBox.information(
+                self, f"About {info.get('name', phase_raw)}",
+                f"Crystal Structure: {info.get('crystal', 'Unknown')}\n\n"
+                f"{info.get('description', '')}\n\n"
+                f"Found in: {info.get('found_in', 'Various metals')}\n\n"
+                f"Why it matters: {info.get('significance', '')}"
+            )
 
     # -------------------------------------------------------- export CSV
 
