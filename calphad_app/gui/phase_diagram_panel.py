@@ -1,0 +1,648 @@
+"""Phase diagram calculation and plotting panel."""
+
+from __future__ import annotations
+
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import (
+    QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
+    QHBoxLayout, QLabel, QMessageBox, QProgressBar,
+    QPushButton, QSplitter, QVBoxLayout, QWidget,
+)
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from pycalphad import Database
+
+from core.calculations import calculate_binary_phase_diagram
+from core.plotting import plot_binary_phase_diagram
+from core.presets import get_binary_preset, translate_phase_short
+from core.units import k_to_c, c_to_k, format_temp
+
+
+class PhaseDiagramWorker(QThread):
+    """Worker thread for phase diagram calculation."""
+    finished = pyqtSignal(object, str)  # (strategy, error)
+
+    def __init__(self, db, el1, el2, t_min, t_max):
+        super().__init__()
+        self.db = db
+        self.el1 = el1
+        self.el2 = el2
+        self.t_min = t_min
+        self.t_max = t_max
+
+    def run(self):
+        strategy, error = calculate_binary_phase_diagram(
+            self.db, self.el1, self.el2, self.t_min, self.t_max
+        )
+        self.finished.emit(strategy, error or "")
+
+
+class PhaseDiagramPanel(QWidget):
+    """Panel for binary phase diagram calculations."""
+
+    calculation_done = pyqtSignal(list, dict, str)  # (elements, conditions, summary)
+
+    def __init__(self):
+        super().__init__()
+        self.db: Database | None = None
+        self.elements: list[str] = []
+        self._worker: PhaseDiagramWorker | None = None
+        self._temp_unit: str = "K"
+        self._comp_unit: str = "mole_fraction"
+        self._last_strategy = None
+        self._last_t_min_k = 300.0
+        self._last_t_max_k = 2000.0
+        self._compare_mode: bool = False
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        title = QLabel("Binary Phase Diagram")
+        title.setObjectName("heading")
+        layout.addWidget(title)
+
+        # Controls
+        controls_group = QGroupBox("Parameters")
+        controls_layout = QHBoxLayout()
+
+        # Element selectors
+        el1_label = QLabel("Element 1:")
+        el1_label.setToolTip("Select the first (base) element of the binary system, e.g. AL")
+        controls_layout.addWidget(el1_label)
+        self.el1_combo = QComboBox()
+        self.el1_combo.setToolTip(
+            "First element in the binary pair.\n"
+            "Example: select AL for an Al-Cu diagram."
+        )
+        self.el1_combo.currentTextChanged.connect(self._on_element_changed)
+        controls_layout.addWidget(self.el1_combo)
+
+        el2_label = QLabel("Element 2:")
+        el2_label.setToolTip("Select the second element of the binary system, e.g. CU")
+        controls_layout.addWidget(el2_label)
+        self.el2_combo = QComboBox()
+        self.el2_combo.setToolTip(
+            "Second element in the binary pair.\n"
+            "Example: select CU for an Al-Cu diagram.\n"
+            "The x-axis will show mole fraction of this element."
+        )
+        self.el2_combo.currentTextChanged.connect(self._on_element_changed)
+        controls_layout.addWidget(self.el2_combo)
+
+        # Temperature range
+        self.t_min_label = QLabel("T min (K):")
+        self.t_min_label.setToolTip("Lower bound of the temperature range for the diagram")
+        controls_layout.addWidget(self.t_min_label)
+        self.t_min_spin = QDoubleSpinBox()
+        self.t_min_spin.setRange(100, 5000)
+        self.t_min_spin.setValue(300)
+        self.t_min_spin.setSingleStep(50)
+        self.t_min_spin.setToolTip(
+            "Minimum temperature for the phase diagram.\n"
+            "Example: 300 K (27 C) for room temperature.\n"
+            "A lower value shows more of the low-temperature phases."
+        )
+        controls_layout.addWidget(self.t_min_spin)
+
+        self.t_max_label = QLabel("T max (K):")
+        self.t_max_label.setToolTip("Upper bound of the temperature range for the diagram")
+        controls_layout.addWidget(self.t_max_label)
+        self.t_max_spin = QDoubleSpinBox()
+        self.t_max_spin.setRange(100, 5000)
+        self.t_max_spin.setValue(2000)
+        self.t_max_spin.setSingleStep(50)
+        self.t_max_spin.setToolTip(
+            "Maximum temperature for the phase diagram.\n"
+            "Example: 1400 K (1127 C) for Al-Cu system.\n"
+            "Should be above the liquidus of the system."
+        )
+        controls_layout.addWidget(self.t_max_spin)
+
+        controls_group.setLayout(controls_layout)
+        layout.addWidget(controls_group)
+
+        # Info label for system preset suggestions
+        self.info_label = QLabel("")
+        self.info_label.setObjectName("info")
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet(
+            "color: #64B5F6; font-style: italic; padding: 2px 8px;"
+        )
+        layout.addWidget(self.info_label)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.calc_btn = QPushButton("Calculate Phase Diagram")
+        self.calc_btn.setObjectName("primary")
+        self.calc_btn.setEnabled(False)
+        self.calc_btn.setToolTip(
+            "Run the CALPHAD phase diagram calculation.\n"
+            "This uses pycalphad's BinaryStrategy mapper and may take\n"
+            "30 seconds to a few minutes depending on the system."
+        )
+        self.calc_btn.clicked.connect(self._calculate)
+        btn_layout.addWidget(self.calc_btn)
+
+        self.export_png_btn = QPushButton("Export PNG")
+        self.export_png_btn.setObjectName("success")
+        self.export_png_btn.setEnabled(False)
+        self.export_png_btn.setToolTip(
+            "Save the current phase diagram as a PNG image.\n"
+            "The exported file includes calculation conditions as a subtitle."
+        )
+        self.export_png_btn.clicked.connect(self._export_png)
+        btn_layout.addWidget(self.export_png_btn)
+
+        self.compare_btn = QPushButton("Compare")
+        self.compare_btn.setEnabled(False)
+        self.compare_btn.setToolTip(
+            "Enter compare mode: copies the current plot to the left\n"
+            "and clears the right side for a new calculation.\n"
+            "Click again to exit compare mode."
+        )
+        self.compare_btn.setStyleSheet(
+            "QPushButton { background-color: #0f3460; color: #CE93D8; "
+            "border: 1px solid #CE93D8; border-radius: 5px; padding: 8px 18px; "
+            "font-weight: bold; min-height: 28px; }"
+            "QPushButton:hover { background-color: #1a4a7a; }"
+            "QPushButton:disabled { background-color: #222244; color: #555577; "
+            "border-color: #333355; }"
+        )
+        self.compare_btn.clicked.connect(self._toggle_compare)
+        btn_layout.addWidget(self.compare_btn)
+
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        # Progress
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setToolTip("Calculation is running in the background.")
+        layout.addWidget(self.progress_bar)
+
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("status")
+        layout.addWidget(self.status_label)
+
+        # Summary label for post-calculation results
+        self.summary_label = QLabel("")
+        self.summary_label.setObjectName("summary")
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet(
+            "color: #AED581; padding: 4px 8px; font-size: 13px;"
+        )
+        layout.addWidget(self.summary_label)
+
+        # Plot area with compare splitter
+        self.plot_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Main (right-side / only) canvas
+        self.figure = Figure(figsize=(8, 6), dpi=100)
+        self.figure.patch.set_facecolor("#1e1e2e")
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas.setMinimumHeight(400)
+        self.canvas.setToolTip(
+            "Click on the diagram to inspect composition and temperature.\n"
+            "Move the mouse to see live coordinates in the status bar."
+        )
+
+        # Compare (left-side) canvas -- hidden by default
+        self.compare_figure = Figure(figsize=(8, 6), dpi=100)
+        self.compare_figure.patch.set_facecolor("#1e1e2e")
+        self.compare_canvas = FigureCanvasQTAgg(self.compare_figure)
+        self.compare_canvas.setMinimumHeight(400)
+        self.compare_canvas.setVisible(False)
+
+        self.plot_splitter.addWidget(self.compare_canvas)
+        self.plot_splitter.addWidget(self.canvas)
+        layout.addWidget(self.plot_splitter, stretch=1)
+
+        # Connect canvas mouse events
+        self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
+        self.canvas.mpl_connect("motion_notify_event", self._on_canvas_move)
+
+    # ------------------------------------------------------------------
+    # Temperature unit support
+    # ------------------------------------------------------------------
+
+    def set_temp_unit(self, unit: str) -> None:
+        """Set the display temperature unit ('K' or 'C'), convert spinbox
+        values, and update labels."""
+        old_unit = self._temp_unit
+        self._temp_unit = unit.upper().strip()
+        if self._temp_unit not in ("K", "C"):
+            self._temp_unit = "K"
+
+        # Convert spinbox values when the unit actually changes
+        if old_unit != self._temp_unit:
+            old_min = self.t_min_spin.value()
+            old_max = self.t_max_spin.value()
+            if self._temp_unit == "C":
+                # Switching from K to C
+                self.t_min_spin.setRange(-273, 4727)
+                self.t_max_spin.setRange(-273, 4727)
+                self.t_min_spin.setValue(k_to_c(old_min))
+                self.t_max_spin.setValue(k_to_c(old_max))
+            else:
+                # Switching from C to K
+                self.t_min_spin.setRange(100, 5000)
+                self.t_max_spin.setRange(100, 5000)
+                self.t_min_spin.setValue(c_to_k(old_min))
+                self.t_max_spin.setValue(c_to_k(old_max))
+
+        self._update_temp_labels()
+
+    def set_comp_unit(self, unit: str) -> None:
+        """Set the composition display unit for the X-axis."""
+        self._comp_unit = unit
+
+    def _update_temp_labels(self) -> None:
+        """Refresh the T-min / T-max labels to reflect the current unit."""
+        if self._temp_unit == "C":
+            self.t_min_label.setText("T min (\u00b0C):")
+            self.t_max_label.setText("T max (\u00b0C):")
+        else:
+            t_min_c = k_to_c(self.t_min_spin.value())
+            t_max_c = k_to_c(self.t_max_spin.value())
+            self.t_min_label.setText(f"T min (K / {t_min_c:.0f} \u00b0C):")
+            self.t_max_label.setText(f"T max (K / {t_max_c:.0f} \u00b0C):")
+
+    # ------------------------------------------------------------------
+    # Element change handler -- auto-fill temperature range
+    # ------------------------------------------------------------------
+
+    def _on_element_changed(self) -> None:
+        """Called when either element combo changes. Auto-fills temperature range
+        from binary presets and shows an info label."""
+        el1 = self.el1_combo.currentText().strip()
+        el2 = self.el2_combo.currentText().strip()
+        if not el1 or not el2 or el1 == el2:
+            self.info_label.setText("")
+            return
+
+        preset = get_binary_preset(el1, el2)
+        if preset is not None:
+            self.t_min_spin.setValue(preset.t_min_k)
+            self.t_max_spin.setValue(preset.t_max_k)
+
+            info_parts = [
+                f"Suggested for {el1}-{el2}: "
+                f"{format_temp(preset.t_min_k)}\u2013{format_temp(preset.t_max_k)}."
+            ]
+            if preset.eutectic_t_k is not None:
+                info_parts.append(
+                    f"Eutectic at {format_temp(preset.eutectic_t_k)}."
+                )
+            if preset.description:
+                info_parts.append(preset.description + ".")
+            self.info_label.setText("  ".join(info_parts))
+            self.info_label.setStyleSheet("color: #4FC3F7;")
+        else:
+            known = "Al-Cu, Al-Si, Al-Mg, Al-Zn, Mg-Al, Mg-Zn, Cu-Zn, Cu-Sn, Fe-C, Fe-Cr, Ti-Al"
+            self.info_label.setText(
+                f"No common alloys use {el1}-{el2}. "
+                f"Known systems: {known}."
+            )
+            self.info_label.setStyleSheet("color: #FFB74D;")
+
+        self._update_temp_labels()
+
+    # ------------------------------------------------------------------
+    # Database update
+    # ------------------------------------------------------------------
+
+    def update_database(self, db: Database, elements: list[str], phases: list[str]):
+        self.db = db
+        self.elements = elements
+
+        # Block signals while populating to avoid repeated _on_element_changed
+        self.el1_combo.blockSignals(True)
+        self.el2_combo.blockSignals(True)
+
+        self.el1_combo.clear()
+        self.el2_combo.clear()
+        self.el1_combo.addItems(elements)
+        self.el2_combo.addItems(elements)
+
+        if len(elements) >= 2:
+            self.el2_combo.setCurrentIndex(1)
+            self.calc_btn.setEnabled(True)
+
+        self.el1_combo.blockSignals(False)
+        self.el2_combo.blockSignals(False)
+
+        # Trigger preset lookup now that both combos are populated
+        self._on_element_changed()
+
+    # ------------------------------------------------------------------
+    # Calculation
+    # ------------------------------------------------------------------
+
+    def _calculate(self):
+        if not self.db:
+            return
+
+        el1 = self.el1_combo.currentText()
+        el2 = self.el2_combo.currentText()
+
+        if el1 == el2:
+            QMessageBox.warning(self, "Input Error", "Please select two different elements.")
+            return
+
+        t_min = self.t_min_spin.value()
+        t_max = self.t_max_spin.value()
+
+        # The calculation always needs Kelvin
+        if self._temp_unit == "C":
+            t_min = c_to_k(t_min)
+            t_max = c_to_k(t_max)
+
+        self._last_t_min_k = t_min  # t_min is already in K at this point
+        self._last_t_max_k = t_max
+
+        if t_min >= t_max:
+            QMessageBox.warning(self, "Input Error", "T min must be less than T max.")
+            return
+
+        self.calc_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.summary_label.setText("")
+        self.status_label.setText("Calculating phase diagram... This may take a minute.")
+        self.status_label.setStyleSheet("color: #FFB74D;")
+
+        self._worker = PhaseDiagramWorker(self.db, el1, el2, t_min, t_max)
+        self._worker.finished.connect(self._on_calculated)
+        self._worker.start()
+
+    # ------------------------------------------------------------------
+    # Calculation result handler
+    # ------------------------------------------------------------------
+
+    def _on_calculated(self, strategy, error: str):
+        self.progress_bar.setVisible(False)
+        self.calc_btn.setEnabled(True)
+
+        if error:
+            self.status_label.setText("Calculation failed.")
+            self.status_label.setStyleSheet("color: #E57373;")
+            self.summary_label.setText("")
+
+            # Friendly error messages instead of raw tracebacks
+            friendly = self._friendly_error(error)
+            QMessageBox.critical(
+                self, "Calculation Error",
+                f"Phase diagram calculation failed.\n\n{friendly}"
+            )
+            return
+
+        self._last_strategy = strategy
+
+        el1 = self.el1_combo.currentText()
+        el2 = self.el2_combo.currentText()
+        t_min = self._last_t_min_k
+        t_max = self._last_t_max_k
+
+        # Clear and plot with translated phase names in legend
+        self.figure.clear()
+        plot_binary_phase_diagram(self.figure, strategy, el1, el2, t_min, t_max,
+                                  comp_unit=self._comp_unit)
+        self._apply_phase_name_translations()
+        self.canvas.draw()
+
+        self.export_png_btn.setEnabled(True)
+        self.compare_btn.setEnabled(True)
+        self.status_label.setText(f"Phase diagram calculated: {el1}-{el2}")
+        self.status_label.setStyleSheet("color: #81C784;")
+
+        # Plain-English result summary
+        self._update_summary(strategy, el1, el2, t_min, t_max)
+
+        # Emit signal for history logging
+        conditions = {"T_min": t_min, "T_max": t_max}
+        summary_text = self.summary_label.text()
+        self.calculation_done.emit([el1, el2], conditions, summary_text)
+
+    # ------------------------------------------------------------------
+    # Phase name translation for legend labels
+    # ------------------------------------------------------------------
+
+    def _apply_phase_name_translations(self) -> None:
+        """Replace raw CALPHAD phase names in the plot legend with
+        human-readable short names from translate_phase_short()."""
+        for ax in self.figure.get_axes():
+            legend = ax.get_legend()
+            if legend is None:
+                continue
+            for text in legend.get_texts():
+                original = text.get_text()
+                translated = translate_phase_short(original)
+                if translated != original:
+                    text.set_text(translated)
+
+    # ------------------------------------------------------------------
+    # Plain-English result summary
+    # ------------------------------------------------------------------
+
+    def _update_summary(self, strategy, el1: str, el2: str,
+                        t_min: float, t_max: float) -> None:
+        """Build a plain-English summary of the computed phase diagram."""
+        # Collect unique phase names from the strategy
+        phase_names: set[str] = set()
+        try:
+            for zpf_line in strategy.zpf_lines:
+                for point in zpf_line.points:
+                    for cs in point.stable_composition_sets:
+                        phase_names.add(cs.phase_record.phase_name)
+        except Exception:
+            pass
+
+        n_phases = len(phase_names)
+        translated = [translate_phase_short(p) for p in sorted(phase_names)]
+
+        parts = [
+            f"Phase diagram shows {n_phases} distinct phase"
+            f"{'s' if n_phases != 1 else ''}: {', '.join(translated)}."
+        ]
+
+        # Add eutectic info from presets if available
+        preset = get_binary_preset(el1, el2)
+        if preset and preset.eutectic_t_k is not None:
+            parts.append(
+                f"Key feature: eutectic at {format_temp(preset.eutectic_t_k)}."
+            )
+
+        parts.append(
+            f"Temperature range: {format_temp(t_min)} to {format_temp(t_max)}."
+        )
+
+        self.summary_label.setText("  ".join(parts))
+
+    # ------------------------------------------------------------------
+    # Friendly error messages
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _friendly_error(raw_error: str) -> str:
+        """Convert a raw traceback into a user-friendly message."""
+        lower = raw_error.lower()
+
+        if "no valid tieline" in lower or "zpf" in lower:
+            return (
+                "The phase diagram mapper could not find stable phase boundaries "
+                "for this system. Try adjusting the temperature range or checking "
+                "that the database contains appropriate phases for both elements."
+            )
+        if "database" in lower and ("key" in lower or "phase" in lower):
+            return (
+                "The thermodynamic database does not contain the required phase "
+                "models for this element pair. Make sure the TDB file covers the "
+                "selected elements."
+            )
+        if "memory" in lower or "memoryerror" in lower:
+            return (
+                "The calculation ran out of memory. Try using a narrower temperature "
+                "range or a coarser grid."
+            )
+        if "singular" in lower or "convergence" in lower:
+            return (
+                "The solver did not converge. This sometimes happens with complex "
+                "phase diagrams. Try a smaller temperature range or different elements."
+            )
+        if "timeout" in lower or "timed out" in lower:
+            return (
+                "The calculation timed out. Try reducing the temperature range."
+            )
+
+        # Fall back to last line of the traceback (the actual exception message)
+        lines = [ln.strip() for ln in raw_error.strip().splitlines() if ln.strip()]
+        last_line = lines[-1] if lines else raw_error
+        return f"Unexpected error: {last_line}"
+
+    # ------------------------------------------------------------------
+    # Canvas interaction -- click and move
+    # ------------------------------------------------------------------
+
+    def _on_canvas_click(self, event) -> None:
+        """Handle a mouse click on the phase diagram canvas."""
+        if event.inaxes is None or event.xdata is None or event.ydata is None:
+            return
+        x_comp = event.xdata
+        t_k = event.ydata
+        el2 = self.el2_combo.currentText()
+        self.status_label.setText(
+            f"Clicked: X({el2}) = {x_comp:.4f}, T = {format_temp(t_k)}"
+        )
+        self.status_label.setStyleSheet("color: #CE93D8;")
+
+    def _on_canvas_move(self, event) -> None:
+        """Handle mouse motion for live crosshair coordinates."""
+        if event.inaxes is None or event.xdata is None or event.ydata is None:
+            return
+        x_comp = event.xdata
+        t_k = event.ydata
+        el2 = self.el2_combo.currentText()
+        self.status_label.setText(
+            f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}"
+        )
+        self.status_label.setStyleSheet("color: #B0BEC5;")
+
+    # ------------------------------------------------------------------
+    # Export PNG with metadata subtitle
+    # ------------------------------------------------------------------
+
+    def _export_png(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Phase Diagram", "phase_diagram.png",
+            "PNG Files (*.png);;All Files (*)"
+        )
+        if not path:
+            return
+
+        el1 = self.el1_combo.currentText()
+        el2 = self.el2_combo.currentText()
+        t_min = self.t_min_spin.value()
+        t_max = self.t_max_spin.value()
+
+        # Add a metadata subtitle with the conditions
+        subtitle = (
+            f"{el1}-{el2} | T: {format_temp(t_min)} to {format_temp(t_max)} | P = 1 atm"
+        )
+        axes = self.figure.get_axes()
+        subtitle_text = None
+        if axes:
+            subtitle_text = self.figure.text(
+                0.5, 0.01, subtitle,
+                ha="center", va="bottom",
+                fontsize=8, color="#90A4AE",
+                fontstyle="italic",
+            )
+            self.figure.subplots_adjust(bottom=0.12)
+
+        self.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
+
+        # Remove the subtitle so it doesn't persist on the interactive canvas
+        if subtitle_text is not None:
+            subtitle_text.remove()
+            self.canvas.draw()
+
+        self.status_label.setText(f"Exported to {path}")
+        self.status_label.setStyleSheet("color: #81C784;")
+
+    # ------------------------------------------------------------------
+    # Compare mode
+    # ------------------------------------------------------------------
+
+    def _toggle_compare(self):
+        """Toggle side-by-side comparison mode.
+
+        When entering compare mode, the current plot is copied to the left
+        canvas and the right canvas is cleared for a new calculation.
+        When exiting, the compare canvas is hidden.
+        """
+        if self._compare_mode:
+            # Exit compare mode
+            self._compare_mode = False
+            self.compare_canvas.setVisible(False)
+            self.compare_btn.setText("Compare")
+            self.compare_figure.clear()
+            self.compare_canvas.draw()
+            self.status_label.setText("Compare mode off.")
+            self.status_label.setStyleSheet("color: #B0BEC5;")
+        else:
+            # Enter compare mode -- copy current plot to compare canvas
+            self._compare_mode = True
+            self.compare_canvas.setVisible(True)
+            self.compare_btn.setText("Exit Compare")
+
+            # Copy the current figure content to the compare figure
+            self.compare_figure.clear()
+            if self._last_strategy is not None:
+                el1 = self.el1_combo.currentText()
+                el2 = self.el2_combo.currentText()
+                t_min = self._last_t_min_k
+                t_max = self._last_t_max_k
+                plot_binary_phase_diagram(
+                    self.compare_figure, self._last_strategy,
+                    el1, el2, t_min, t_max,
+                    comp_unit=self._comp_unit,
+                )
+                # Apply phase name translations to the compare figure
+                for ax in self.compare_figure.get_axes():
+                    legend = ax.get_legend()
+                    if legend is None:
+                        continue
+                    for text in legend.get_texts():
+                        original = text.get_text()
+                        translated = translate_phase_short(original)
+                        if translated != original:
+                            text.set_text(translated)
+            self.compare_canvas.draw()
+
+            self.status_label.setText(
+                "Compare mode: previous diagram on the left. "
+                "Run a new calculation for the right side."
+            )
+            self.status_label.setStyleSheet("color: #CE93D8;")

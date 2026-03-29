@@ -1,0 +1,35 @@
+name: Build CalcPHAD Windows Executable
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r calphad_app/requirements.txt
+
+      - name: Build executable with PyInstaller
+        run: |
+          cd calphad_app
+          pyinstaller --onefile --windowed --name CalcPHAD --add-data "gui;gui" --add-data "core;core" main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CalcPHAD-windows.exe
+          path: calphad_app/dist/CalcPHAD.exe
+          retention-days: 30
