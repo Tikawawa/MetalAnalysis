@@ -517,17 +517,28 @@ def plot_ternary_isothermal(
 ) -> None:
     """Plot a ternary isothermal section."""
     fig.clear()
-    ax = fig.add_subplot(111)
-    ax.set_facecolor("#1e1e2e")
     fig.patch.set_facecolor("#1e1e2e")
+
+    # Register the triangular projection and create triangular axes
+    try:
+        import pycalphad.plot.triangular  # noqa: F401  -- registers 'triangular' projection
+        ax = fig.add_subplot(111, projection="triangular")
+    except Exception:
+        # Fallback if triangular projection unavailable
+        ax = fig.add_subplot(111)
+
+    ax.set_facecolor("#1e1e2e")
 
     try:
         from pycalphad.mapping.plotting import plot_ternary
         plot_ternary(strategy, ax=ax)
-    except Exception:
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
         ax.text(0.5, 0.5,
-                "Could not render ternary diagram.\nTry a different temperature.",
-                ha="center", va="center", color="#E57373", fontsize=12,
+                f"Could not render ternary diagram.\nTry a different temperature.\n\n"
+                f"Error: {str(exc)[:120]}",
+                ha="center", va="center", color="#E57373", fontsize=11,
                 transform=ax.transAxes)
 
     ax.set_title(
@@ -535,8 +546,12 @@ def plot_ternary_isothermal(
         color="white", fontsize=14, fontweight="bold",
     )
     ax.tick_params(colors="white")
-    for spine in ax.spines.values():
-        spine.set_color("#555555")
+    # TriangularAxes may not have standard spines -- guard against it
+    try:
+        for spine in ax.spines.values():
+            spine.set_color("#555555")
+    except Exception:
+        pass
 
     if ax.get_legend():
         ax.get_legend().get_frame().set_facecolor("#2d2d3e")
@@ -618,10 +633,13 @@ def plot_isopleth(
     try:
         from pycalphad.mapping.plotting import plot_isopleth as _plot_iso
         _plot_iso(strategy, ax=ax)
-    except Exception:
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
         ax.text(0.5, 0.5,
-                "Could not render isopleth.\nTry different conditions.",
-                ha="center", va="center", color="#E57373", fontsize=12,
+                f"Could not render isopleth.\nTry different conditions.\n\n"
+                f"Error: {str(exc)[:120]}",
+                ha="center", va="center", color="#E57373", fontsize=11,
                 transform=ax.transAxes)
 
     ax.set_xlabel(f"Mole fraction {varied_el}", color="white", fontsize=12)
