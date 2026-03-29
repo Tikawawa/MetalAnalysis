@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox,
-    QProgressBar, QPushButton, QRadioButton, QTableWidget,
+    QProgressBar, QPushButton, QRadioButton, QScrollArea, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -165,7 +165,16 @@ class EquilibriumPanel(QWidget):
 
     # ------------------------------------------------------------------ UI
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         title = QLabel("Equilibrium Calculator")
@@ -359,6 +368,9 @@ class EquilibriumPanel(QWidget):
 
         layout.addLayout(results_layout, stretch=1)
 
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+
     # -------------------------------------------------------- condition mode
 
     def _on_condition_mode_changed(self, comp_checked: bool):
@@ -369,14 +381,24 @@ class EquilibriumPanel(QWidget):
                 self.comp_group.setTitle("Compositions (weight percent)")
             else:
                 self.comp_group.setTitle("Compositions (mole fractions)")
+            # Restore composition mode: force-reset label and range
+            # (set_comp_unit may early-return since _comp_unit wasn't changed)
             for row in self.comp_rows:
-                row.set_comp_unit(self._comp_unit)
+                row.unit_label.setText(row._label_text())
+                row._apply_unit_range()
+                # Restore saved values if available
+                saved = getattr(row, "_saved_comp_value", None)
+                if saved is not None:
+                    row.composition_spin.setValue(saved)
+                    row._saved_comp_value = None
             self.balance_label.setVisible(True)
             self._update_balance()
         else:
             self._condition_mode = "chemical_potential"
             self.comp_group.setTitle("Chemical Potentials (J/mol)")
             for row in self.comp_rows:
+                # Save current composition value before overwriting
+                row._saved_comp_value = row.composition_spin.value()
                 row.unit_label.setText("MU (J/mol) =")
                 row.composition_spin.setRange(-500000, 0)
                 row.composition_spin.setDecimals(0)
@@ -904,7 +926,6 @@ class EquilibriumPanel(QWidget):
         if not item:
             return
         phase_raw = item.text().split("(")[0].strip()
-        from gui.info_content import PHASE_EXPLANATIONS
         info = PHASE_EXPLANATIONS.get(phase_raw, {})
         if info:
             QMessageBox.information(
