@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
-    QPushButton, QRadioButton, QButtonGroup, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QButtonGroup, QScrollArea, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -78,7 +78,16 @@ class TernaryPanel(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         title = QLabel("Ternary Phase Diagram")
@@ -91,26 +100,24 @@ class TernaryPanel(QWidget):
         self.info_group.setCheckable(True)
         self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
-        info_text = QLabel()
-        info_text.setWordWrap(True)
-        info_text.setTextFormat(Qt.TextFormat.RichText)
-        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
-        info_text.setText(
+        self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(info_text)
+        info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
         layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(lambda checked: [
-            w.setVisible(checked) for w in [info_text]
-        ])
-        info_text.setVisible(False)
+        self.info_group.toggled.connect(self._toggle_info)
+        self._info_text.setVisible(False)
 
         # Element selection
         el_group = QGroupBox("Elements (select 3)")
@@ -264,9 +271,20 @@ class TernaryPanel(QWidget):
         self.canvas.setMinimumHeight(400)
         layout.addWidget(self.canvas, stretch=1)
 
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+
     def _on_mode_changed(self, mode_id: int):
         self.iso_group.setVisible(mode_id == 0)
         self.isopleth_group.setVisible(mode_id == 1)
+
+    def _toggle_info(self, checked: bool):
+        """Toggle the educational info panel visibility."""
+        self._info_text.setVisible(checked)
+        if checked:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         self.db = db

@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
-    QPushButton, QSplitter, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -17,7 +17,7 @@ from core.plotting import plot_binary_phase_diagram
 from core.presets import get_binary_preset, translate_phase_short
 from core.units import k_to_c, c_to_k, format_temp
 from core.error_helper import build_error_message
-from gui.info_content import TAB_INFO
+from gui.info_content import TAB_INFO, TOOLTIPS
 
 
 class PhaseDiagramWorker(QThread):
@@ -58,7 +58,16 @@ class PhaseDiagramPanel(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         title = QLabel("Binary Phase Diagram")
@@ -71,26 +80,24 @@ class PhaseDiagramPanel(QWidget):
         self.info_group.setCheckable(True)
         self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
-        info_text = QLabel()
-        info_text.setWordWrap(True)
-        info_text.setTextFormat(Qt.TextFormat.RichText)
-        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
-        info_text.setText(
+        self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(info_text)
+        info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
         layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(lambda checked: [
-            w.setVisible(checked) for w in [info_text]
-        ])
-        info_text.setVisible(False)
+        self.info_group.toggled.connect(self._toggle_info)
+        self._info_text.setVisible(False)
 
         # Controls
         controls_group = QGroupBox("Parameters")
@@ -98,55 +105,40 @@ class PhaseDiagramPanel(QWidget):
 
         # Element selectors
         el1_label = QLabel("Element 1:")
-        el1_label.setToolTip("Select the first (base) element of the binary system, e.g. AL")
+        el1_label.setToolTip(TOOLTIPS["pd_el1"])
         controls_layout.addWidget(el1_label)
         self.el1_combo = QComboBox()
-        self.el1_combo.setToolTip(
-            "First element in the binary pair.\n"
-            "Example: select AL for an Al-Cu diagram."
-        )
+        self.el1_combo.setToolTip(TOOLTIPS["pd_el1"])
         self.el1_combo.currentTextChanged.connect(self._on_element_changed)
         controls_layout.addWidget(self.el1_combo)
 
         el2_label = QLabel("Element 2:")
-        el2_label.setToolTip("Select the second element of the binary system, e.g. CU")
+        el2_label.setToolTip(TOOLTIPS["pd_el2"])
         controls_layout.addWidget(el2_label)
         self.el2_combo = QComboBox()
-        self.el2_combo.setToolTip(
-            "Second element in the binary pair.\n"
-            "Example: select CU for an Al-Cu diagram.\n"
-            "The x-axis will show mole fraction of this element."
-        )
+        self.el2_combo.setToolTip(TOOLTIPS["pd_el2"])
         self.el2_combo.currentTextChanged.connect(self._on_element_changed)
         controls_layout.addWidget(self.el2_combo)
 
         # Temperature range
         self.t_min_label = QLabel("T min (K):")
-        self.t_min_label.setToolTip("Lower bound of the temperature range for the diagram")
+        self.t_min_label.setToolTip(TOOLTIPS["pd_t_min"])
         controls_layout.addWidget(self.t_min_label)
         self.t_min_spin = QDoubleSpinBox()
         self.t_min_spin.setRange(100, 5000)
         self.t_min_spin.setValue(300)
         self.t_min_spin.setSingleStep(50)
-        self.t_min_spin.setToolTip(
-            "Minimum temperature for the phase diagram.\n"
-            "Example: 300 K (27 C) for room temperature.\n"
-            "A lower value shows more of the low-temperature phases."
-        )
+        self.t_min_spin.setToolTip(TOOLTIPS["pd_t_min"])
         controls_layout.addWidget(self.t_min_spin)
 
         self.t_max_label = QLabel("T max (K):")
-        self.t_max_label.setToolTip("Upper bound of the temperature range for the diagram")
+        self.t_max_label.setToolTip(TOOLTIPS["pd_t_max"])
         controls_layout.addWidget(self.t_max_label)
         self.t_max_spin = QDoubleSpinBox()
         self.t_max_spin.setRange(100, 5000)
         self.t_max_spin.setValue(2000)
         self.t_max_spin.setSingleStep(50)
-        self.t_max_spin.setToolTip(
-            "Maximum temperature for the phase diagram.\n"
-            "Example: 1400 K (1127 C) for Al-Cu system.\n"
-            "Should be above the liquidus of the system."
-        )
+        self.t_max_spin.setToolTip(TOOLTIPS["pd_t_max"])
         controls_layout.addWidget(self.t_max_spin)
 
         controls_group.setLayout(controls_layout)
@@ -166,31 +158,20 @@ class PhaseDiagramPanel(QWidget):
         self.calc_btn = QPushButton("Calculate Phase Diagram")
         self.calc_btn.setObjectName("primary")
         self.calc_btn.setEnabled(False)
-        self.calc_btn.setToolTip(
-            "Run the CALPHAD phase diagram calculation.\n"
-            "This uses pycalphad's BinaryStrategy mapper and may take\n"
-            "30 seconds to a few minutes depending on the system."
-        )
+        self.calc_btn.setToolTip(TOOLTIPS["pd_calculate"])
         self.calc_btn.clicked.connect(self._calculate)
         btn_layout.addWidget(self.calc_btn)
 
         self.export_png_btn = QPushButton("Export PNG")
         self.export_png_btn.setObjectName("success")
         self.export_png_btn.setEnabled(False)
-        self.export_png_btn.setToolTip(
-            "Save the current phase diagram as a PNG image.\n"
-            "The exported file includes calculation conditions as a subtitle."
-        )
+        self.export_png_btn.setToolTip(TOOLTIPS["pd_export_png"])
         self.export_png_btn.clicked.connect(self._export_png)
         btn_layout.addWidget(self.export_png_btn)
 
         self.compare_btn = QPushButton("Compare")
         self.compare_btn.setEnabled(False)
-        self.compare_btn.setToolTip(
-            "Enter compare mode: copies the current plot to the left\n"
-            "and clears the right side for a new calculation.\n"
-            "Click again to exit compare mode."
-        )
+        self.compare_btn.setToolTip(TOOLTIPS["pd_compare"])
         self.compare_btn.setStyleSheet(
             "QPushButton { background-color: #0f3460; color: #CE93D8; "
             "border: 1px solid #CE93D8; border-radius: 5px; padding: 8px 18px; "
@@ -233,10 +214,7 @@ class PhaseDiagramPanel(QWidget):
         self.figure.patch.set_facecolor("#1e1e2e")
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.setMinimumHeight(400)
-        self.canvas.setToolTip(
-            "Click on the diagram to inspect composition and temperature.\n"
-            "Move the mouse to see live coordinates in the status bar."
-        )
+        self.canvas.setToolTip(TOOLTIPS["pd_canvas"])
 
         # Compare (left-side) canvas -- hidden by default
         self.compare_figure = Figure(figsize=(8, 6), dpi=100)
@@ -252,6 +230,9 @@ class PhaseDiagramPanel(QWidget):
         # Connect canvas mouse events
         self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
         self.canvas.mpl_connect("motion_notify_event", self._on_canvas_move)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     # ------------------------------------------------------------------
     # Temperature unit support
@@ -342,6 +323,14 @@ class PhaseDiagramPanel(QWidget):
     # ------------------------------------------------------------------
     # Database update
     # ------------------------------------------------------------------
+
+    def _toggle_info(self, checked: bool):
+        """Toggle the educational info panel visibility."""
+        self._info_text.setVisible(checked)
+        if checked:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         self.db = db

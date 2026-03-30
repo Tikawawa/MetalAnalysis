@@ -16,7 +16,7 @@ from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QMessageBox,
-    QProgressBar, QPushButton, QTabWidget, QTableWidget,
+    QProgressBar, QPushButton, QScrollArea, QTabWidget, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -24,7 +24,7 @@ from matplotlib.figure import Figure
 from pycalphad import Database
 
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
-from gui.info_content import TAB_INFO
+from gui.info_content import TAB_INFO, TOOLTIPS
 
 # ---------------------------------------------------------------------------
 # Optional scheil import -- graceful fallback
@@ -270,7 +270,16 @@ class ScheilPanel(QWidget):
 
     # ------------------------------------------------------------------ UI
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         title = QLabel("Scheil Solidification")
@@ -283,26 +292,24 @@ class ScheilPanel(QWidget):
         self.info_group.setCheckable(True)
         self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
-        info_text = QLabel()
-        info_text.setWordWrap(True)
-        info_text.setTextFormat(Qt.TextFormat.RichText)
-        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
-        info_text.setText(
+        self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(info_text)
+        info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
         layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(lambda checked: [
-            w.setVisible(checked) for w in [info_text]
-        ])
-        info_text.setVisible(False)
+        self.info_group.toggled.connect(self._toggle_info)
+        self._info_text.setVisible(False)
 
         # --- Scheil availability warning ---
         if not _SCHEIL_AVAILABLE:
@@ -365,11 +372,7 @@ class ScheilPanel(QWidget):
         self.start_temp_spin.setValue(1600)
         self.start_temp_spin.setSingleStep(50)
         self.start_temp_spin.setDecimals(1)
-        self.start_temp_spin.setToolTip(
-            "Temperature at which to begin the Scheil simulation. "
-            "This should be above the liquidus of the alloy. "
-            "Default 1600 K is suitable for steels."
-        )
+        self.start_temp_spin.setToolTip(TOOLTIPS["scheil_start_temp"])
         param_layout.addWidget(self.start_temp_spin)
 
         param_layout.addWidget(QLabel("Step Size (K):"))
@@ -378,10 +381,7 @@ class ScheilPanel(QWidget):
         self.step_spin.setValue(1.0)
         self.step_spin.setSingleStep(0.5)
         self.step_spin.setDecimals(1)
-        self.step_spin.setToolTip(
-            "Temperature decrement per Scheil step. Smaller values give "
-            "higher resolution but take longer. 1 K is a good default."
-        )
+        self.step_spin.setToolTip(TOOLTIPS["scheil_step_size"])
         param_layout.addWidget(self.step_spin)
 
         param_layout.addStretch()
@@ -481,6 +481,9 @@ class ScheilPanel(QWidget):
 
         layout.addWidget(self.result_tabs, stretch=1)
 
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+
     # -------------------------------------------------------- unit setters
 
     def set_temp_unit(self, unit: str):
@@ -498,17 +501,12 @@ class ScheilPanel(QWidget):
             self.start_temp_label.setText("Start Temperature (\u00b0C):")
             self.start_temp_spin.setRange(227, 4727)
             self.start_temp_spin.setValue(k_to_c(old_val))
-            self.start_temp_spin.setToolTip(
-                "Start temperature in Celsius. Should be above the liquidus."
-            )
+            self.start_temp_spin.setToolTip(TOOLTIPS["scheil_start_temp_c"])
         else:
             self.start_temp_label.setText("Start Temperature (K):")
             self.start_temp_spin.setRange(500, 5000)
             self.start_temp_spin.setValue(c_to_k(old_val))
-            self.start_temp_spin.setToolTip(
-                "Temperature at which to begin the Scheil simulation. "
-                "Should be above the liquidus of the alloy."
-            )
+            self.start_temp_spin.setToolTip(TOOLTIPS["scheil_start_temp"])
         self.start_temp_spin.blockSignals(False)
 
     def set_comp_unit(self, unit: str):
@@ -571,6 +569,14 @@ class ScheilPanel(QWidget):
         self._update_balance()
 
     # -------------------------------------------------------- database load
+
+    def _toggle_info(self, checked: bool):
+        """Toggle the educational info panel visibility."""
+        self._info_text.setVisible(checked)
+        if checked:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str],
                         phases: list[str]):

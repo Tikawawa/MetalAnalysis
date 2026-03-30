@@ -17,7 +17,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem,
-    QMessageBox, QProgressBar, QPushButton, QTableWidget,
+    QMessageBox, QProgressBar, QPushButton, QScrollArea, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -26,7 +26,7 @@ from pycalphad import Database, calculate, variables as v
 
 from core.presets import translate_phase_short
 from core.units import k_to_c, c_to_k, format_temp
-from gui.info_content import TAB_INFO
+from gui.info_content import TAB_INFO, TOOLTIPS
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -180,7 +180,16 @@ class SinglePhasePanel(QWidget):
 
     # ------------------------------------------------------------------ UI
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         # Title
@@ -194,26 +203,24 @@ class SinglePhasePanel(QWidget):
         self.info_group.setCheckable(True)
         self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
-        info_text = QLabel()
-        info_text.setWordWrap(True)
-        info_text.setTextFormat(Qt.TextFormat.RichText)
-        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
-        info_text.setText(
+        self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(info_text)
+        info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
         layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(lambda checked: [
-            w.setVisible(checked) for w in [info_text]
-        ])
-        info_text.setVisible(False)
+        self.info_group.toggled.connect(self._toggle_info)
+        self._info_text.setVisible(False)
 
         # --- Elements ---
         el_group = QGroupBox("Elements")
@@ -261,10 +268,7 @@ class SinglePhasePanel(QWidget):
         phase_layout.addLayout(btn_row)
 
         self.phase_list = QListWidget()
-        self.phase_list.setToolTip(
-            "Check/uncheck phases to include in the calculation. "
-            "Each checked phase produces one curve on the plot."
-        )
+        self.phase_list.setToolTip(TOOLTIPS["sp_phase_list"])
         self.phase_list.itemChanged.connect(self._update_phase_counter)
         phase_layout.addWidget(self.phase_list)
 
@@ -400,6 +404,9 @@ class SinglePhasePanel(QWidget):
         )
         layout.addWidget(self.results_table, stretch=1)
 
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+
     # -------------------------------------------------------- unit setters
 
     def set_temp_unit(self, unit: str):
@@ -451,6 +458,14 @@ class SinglePhasePanel(QWidget):
             self.comp_spin.setValue(min(0.999, max(0.001, old_val / 100.0)))
 
     # -------------------------------------------------------- database load
+
+    def _toggle_info(self, checked: bool):
+        """Toggle the educational info panel visibility."""
+        self._info_text.setVisible(checked)
+        if checked:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         """Populate combos and phase list after a database is loaded."""

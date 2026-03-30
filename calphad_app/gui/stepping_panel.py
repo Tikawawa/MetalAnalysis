@@ -8,7 +8,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup, QComboBox, QDoubleSpinBox, QFileDialog, QGroupBox,
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
-    QPushButton, QRadioButton, QStackedWidget, QVBoxLayout, QWidget,
+    QPushButton, QRadioButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -173,7 +173,16 @@ class SteppingPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         title = QLabel("Stepping Calculator")
@@ -186,26 +195,24 @@ class SteppingPanel(QWidget):
         self.info_group.setCheckable(True)
         self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
-        info_text = QLabel()
-        info_text.setWordWrap(True)
-        info_text.setTextFormat(Qt.TextFormat.RichText)
-        info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
-        info_text.setText(
+        self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(info_text)
+        info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
         layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(lambda checked: [
-            w.setVisible(checked) for w in [info_text]
-        ])
-        info_text.setVisible(False)
+        self.info_group.toggled.connect(self._toggle_info)
+        self._info_text.setVisible(False)
 
         # --- Sweep mode toggle ---
         mode_group = QGroupBox("Sweep Mode")
@@ -249,10 +256,7 @@ class SteppingPanel(QWidget):
         self.comp_spin.setDecimals(4)
         self.comp_spin.setSingleStep(0.01)
         self.comp_spin.setValue(0.10)
-        self.comp_spin.setToolTip(
-            "Mole fraction of the second element. "
-            "For example, 0.10 means 10% of Element 2."
-        )
+        self.comp_spin.setToolTip(TOOLTIPS["step_composition"])
         comp_layout.addWidget(self.comp_spin)
 
         # Alloy composition hint (Improvement 10)
@@ -287,10 +291,7 @@ class SteppingPanel(QWidget):
         self.t_min_spin.setRange(100, 5000)
         self.t_min_spin.setValue(300)
         self.t_min_spin.setSingleStep(50)
-        self.t_min_spin.setToolTip(
-            "Lowest temperature in the scan (Kelvin). "
-            "Usually 300 K (room temperature) is a good start."
-        )
+        self.t_min_spin.setToolTip(TOOLTIPS["step_t_min"])
         temp_layout.addWidget(self.t_min_spin)
 
         self.t_max_label = QLabel("T max (K):")
@@ -299,10 +300,7 @@ class SteppingPanel(QWidget):
         self.t_max_spin.setRange(100, 5000)
         self.t_max_spin.setValue(1200)
         self.t_max_spin.setSingleStep(50)
-        self.t_max_spin.setToolTip(
-            "Highest temperature in the scan (Kelvin). "
-            "Should be above the liquidus of the alloy."
-        )
+        self.t_max_spin.setToolTip(TOOLTIPS["step_t_max"])
         temp_layout.addWidget(self.t_max_spin)
 
         temp_layout.addWidget(QLabel("Step (K):"))
@@ -310,10 +308,7 @@ class SteppingPanel(QWidget):
         self.t_step_spin.setRange(1, 100)
         self.t_step_spin.setValue(5)
         self.t_step_spin.setSingleStep(1)
-        self.t_step_spin.setToolTip(
-            "Temperature increment between calculations. "
-            "Smaller = more precise but slower. 5 K is a good balance."
-        )
+        self.t_step_spin.setToolTip(TOOLTIPS["step_t_step"])
         temp_layout.addWidget(self.t_step_spin)
 
         temp_layout.addWidget(QLabel("Pressure (Pa):"))
@@ -321,10 +316,7 @@ class SteppingPanel(QWidget):
         self.pressure_spin.setRange(1, 1e9)
         self.pressure_spin.setValue(101325)
         self.pressure_spin.setDecimals(0)
-        self.pressure_spin.setToolTip(
-            "Total pressure in Pascals. 101325 Pa = 1 atmosphere. "
-            "Only change this for high-pressure or vacuum studies."
-        )
+        self.pressure_spin.setToolTip(TOOLTIPS["step_pressure"])
         temp_layout.addWidget(self.pressure_spin)
 
         temp_group.setLayout(temp_layout)
@@ -465,6 +457,9 @@ class SteppingPanel(QWidget):
         self.el1_combo.currentTextChanged.connect(self._on_element_changed)
         self.el2_combo.currentTextChanged.connect(self._on_element_changed)
 
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
+
     # ------------------------------------------------------------------
     # Sweep mode toggle
     # ------------------------------------------------------------------
@@ -585,6 +580,14 @@ class SteppingPanel(QWidget):
     # ------------------------------------------------------------------
     # Database update
     # ------------------------------------------------------------------
+
+    def _toggle_info(self, checked: bool):
+        """Toggle the educational info panel visibility."""
+        self._info_text.setVisible(checked)
+        if checked:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         self.db = db
@@ -972,6 +975,23 @@ class SteppingPanel(QWidget):
         summary_parts.append(
             f" {n_phases} distinct phase{'s were' if n_phases != 1 else ' was'} found."
         )
+
+        # --- Educational context about solidus/liquidus ---
+        if result.solidus is not None and result.liquidus is not None:
+            summary_parts.append(
+                "\n\nIn plain English: The solidus is where the first drop of "
+                "liquid appears (melting begins). The liquidus is where the "
+                "last bit of solid disappears (fully molten). Between them is "
+                "the 'mushy zone' -- a mix of solid crystals and liquid metal, "
+                "important for casting and welding."
+            )
+        elif result.solidus is not None:
+            summary_parts.append(
+                "\n\nIn plain English: The solidus is where the first drop of "
+                "liquid appears -- below this temperature, the alloy is "
+                "completely solid."
+            )
+
         self.summary_label.setText("".join(summary_parts))
         self.summary_label.setVisible(True)
 
