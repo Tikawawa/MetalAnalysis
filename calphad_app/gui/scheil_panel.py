@@ -287,7 +287,9 @@ class ScheilPanel(QWidget):
 
         # --- Educational info panel ---
         info_data = TAB_INFO.get("scheil", {})
-        self.info_group = QGroupBox("What Is This?")
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
         info_layout = QVBoxLayout()
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
@@ -304,9 +306,11 @@ class ScheilPanel(QWidget):
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        self._info_text.setVisible(True)
+        self._info_visible = False
+        self._info_text.setVisible(False)
         info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
+        self.info_group.toggled.connect(self._toggle_info)
         layout.addWidget(self.info_group)
 
         # --- Scheil availability warning ---
