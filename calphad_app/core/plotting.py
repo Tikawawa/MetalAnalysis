@@ -116,15 +116,21 @@ def plot_binary_phase_diagram(
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         short_labels = [translate_phase_short(l) for l in labels]
-        leg = ax.legend(
-            handles, short_labels,
-            fontsize=8, loc="upper left",
-            frameon=True, framealpha=0.9,
-            ncol=2, handlelength=1.5, borderaxespad=0.5,
-        )
-        leg.get_frame().set_facecolor("#2d2d3e")
-        for text in leg.get_texts():
-            text.set_color("white")
+        # Smart legend placement
+        if len(handles) <= 8:
+            leg = ax.legend(handles, short_labels,
+                            fontsize=8, loc="best",
+                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+        elif len(handles) <= 15:
+            leg = ax.legend(handles, short_labels,
+                            fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                            borderaxespad=0)
+        else:
+            leg = ax.legend(handles, short_labels,
+                            fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                            ncol=1 + len(handles) // 20, borderaxespad=0)
 
     # Secondary Celsius axis on the right-hand side
     try:
@@ -281,6 +287,41 @@ def _plot_binary_solid_fills(ax, strategy) -> None:
     # Legend is built and positioned by plot_binary_phase_diagram
 
 
+def build_phase_region_lookup(strategy, t_min: float, t_max: float
+                              ) -> list[tuple[float, float, str]]:
+    """Build a list of (x, T, phase_label) sample points for hover lookup.
+
+    Returns a list of tuples that can be used with a KDTree or brute-force
+    nearest-neighbor search to determine which phase region contains a
+    given (x, T) coordinate.
+    """
+    samples: list[tuple[float, float, str]] = []
+
+    for zpf_line in getattr(strategy, "zpf_lines", []):
+        for point in zpf_line.points:
+            try:
+                T = float(point.global_conditions.get("T", np.nan))
+                if np.isnan(T) or T < t_min or T > t_max:
+                    continue
+                phase_names = sorted(
+                    cs.phase_record.phase_name
+                    for cs in point.stable_composition_sets
+                )
+                label = " + ".join(
+                    translate_phase_short(p) for p in phase_names
+                )
+                xs = [
+                    float(cs.X[1]) if len(cs.X) > 1 else 0.0
+                    for cs in point.stable_composition_sets
+                ]
+                x_mid = float(np.mean(xs))
+                samples.append((x_mid, T, label))
+            except Exception:
+                continue
+
+    return samples
+
+
 def _label_phase_regions(ax, strategy, comp_element: str,
                          t_min: float, t_max: float) -> None:
     """Attempt to label phase regions at their approximate centres.
@@ -376,7 +417,18 @@ def _plot_binary_manual(ax, strategy, el2: str) -> None:
             ax.scatter(xs, ts, s=2, color=get_phase_color(i),
                        label=friendly, alpha=0.7)
 
-    ax.legend(fontsize=8, loc="best")
+    # Smart legend placement
+    handles, labels = ax.get_legend_handles_labels()
+    if len(handles) <= 8:
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+    elif len(handles) <= 15:
+        legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           borderaxespad=0)
+    else:
+        legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           ncol=1 + len(handles) // 20, borderaxespad=0)
 
 
 def plot_stepping_result(
@@ -435,10 +487,18 @@ def plot_stepping_result(
         spine.set_color("#555555")
     ax.grid(True, alpha=0.2, color="#555555")
 
-    legend = ax.legend(fontsize=9, loc="best")
-    legend.get_frame().set_facecolor("#2d2d3e")
-    for text in legend.get_texts():
-        text.set_color("white")
+    # Smart legend placement
+    handles, labels = ax.get_legend_handles_labels()
+    if len(handles) <= 8:
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+    elif len(handles) <= 15:
+        legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           borderaxespad=0)
+    else:
+        legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           ncol=1 + len(handles) // 20, borderaxespad=0)
 
     # Secondary Celsius axis on the top
     try:
@@ -625,10 +685,18 @@ def plot_composition_stepping(
         spine.set_color("#555555")
     ax.grid(True, alpha=0.2, color="#555555")
 
-    legend = ax.legend(fontsize=9, loc="best")
-    legend.get_frame().set_facecolor("#2d2d3e")
-    for text in legend.get_texts():
-        text.set_color("white")
+    # Smart legend placement
+    handles, labels = ax.get_legend_handles_labels()
+    if len(handles) <= 8:
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+    elif len(handles) <= 15:
+        legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           borderaxespad=0)
+    else:
+        legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           ncol=1 + len(handles) // 20, borderaxespad=0)
 
     fig.tight_layout()
 
