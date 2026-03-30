@@ -342,9 +342,7 @@ class T0Panel(QWidget):
 
         # --- Educational info panel ---
         info_data = TAB_INFO.get("t_zero", {})
-        self.info_group = QGroupBox("What Is This? (click to expand)")
-        self.info_group.setCheckable(True)
-        self.info_group.setChecked(False)
+        self.info_group = QGroupBox("What Is This?")
         info_layout = QVBoxLayout()
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
@@ -361,11 +359,9 @@ class T0Panel(QWidget):
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        self._info_visible = False
-        self._info_text.setVisible(False)
+        self._info_text.setVisible(True)
         info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
-        self.info_group.toggled.connect(self._toggle_info)
         layout.addWidget(self.info_group)
 
         # --- System group ---
@@ -658,6 +654,12 @@ class T0Panel(QWidget):
             self._info_visible = checked
         else:
             self._info_visible = not self._info_visible
+        # Defer visibility change to avoid Qt layout re-entrancy segfault
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._apply_info_visibility)
+
+    def _apply_info_visibility(self):
+        """Apply the info panel visibility (deferred from toggle to avoid segfault)."""
         self._info_text.setVisible(self._info_visible)
         if self._info_visible:
             self.info_group.setTitle("What Is This? (click to collapse)")

@@ -391,11 +391,12 @@ class MainWindow(QMainWindow):
                 if name in renames:
                     self.tabs.setTabText(i, renames[name])
         else:
-            # Restore original names
-            originals = {5: "Scheil", 3: "Stepping", 2: "Equilibrium"}
-            for idx, name in originals.items():
-                if idx < self.tabs.count():
-                    self.tabs.setTabText(idx, name)
+            # Restore original names by matching the renamed labels
+            restore = {"Melting Sim": "Stepping", "Casting Sim": "Scheil", "Alloy Analyzer": "Equilibrium"}
+            for i in range(self.tabs.count()):
+                name = self.tabs.tabText(i)
+                if name in restore:
+                    self.tabs.setTabText(i, restore[name])
 
         # Broadcast to all panels
         self.learning_mode_changed.emit(checked)
@@ -448,18 +449,39 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        # Workflow stepper
-        self.stepper = WorkflowStepper()
-        self.stepper.step_clicked.connect(self._on_stepper_clicked)
-        layout.addWidget(self.stepper)
+        # Database loader bar (replaces old Database tab + stepper)
+        db_bar = QWidget()
+        db_bar.setStyleSheet(
+            "QWidget { background-color: #16213e; border-radius: 4px; }"
+        )
+        db_bar.setFixedHeight(42)
+        db_layout = QHBoxLayout(db_bar)
+        db_layout.setContentsMargins(8, 4, 8, 4)
+        db_layout.setSpacing(6)
 
-        # Separator line
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #333355;")
-        layout.addWidget(sep)
+        self.db_path_label = QLabel("No database loaded")
+        self.db_path_label.setStyleSheet("color: #888; font-size: 12px;")
+        db_layout.addWidget(self.db_path_label, stretch=1)
 
-        # Tab widget — use Ignored vertical size so tabs don't resize the window
+        self.db_elements_label = QLabel("")
+        self.db_elements_label.setStyleSheet("color: #4FC3F7; font-size: 11px;")
+        self.db_elements_label.setToolTip("Elements available in the loaded database")
+        db_layout.addWidget(self.db_elements_label, stretch=2)
+
+        browse_btn = QPushButton("Open TDB...")
+        browse_btn.setToolTip("Browse for a .tdb thermodynamic database file (Ctrl+O)")
+        browse_btn.setFixedWidth(100)
+        browse_btn.setStyleSheet(
+            "QPushButton { background-color: #0f3460; color: #4FC3F7; "
+            "border: 1px solid #4FC3F7; border-radius: 4px; font-weight: bold; font-size: 11px; }"
+            "QPushButton:hover { background-color: #164a80; }"
+        )
+        browse_btn.clicked.connect(self._shortcut_open_database)
+        db_layout.addWidget(browse_btn)
+
+        layout.addWidget(db_bar)
+
+        # Tab widget
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.setSizePolicy(
@@ -467,8 +489,7 @@ class MainWindow(QMainWindow):
         )
         self.tabs.setUsesScrollButtons(True)
 
-        # Panels — all use Ignored vertical size policy so the tab widget
-        # keeps a stable size regardless of which tab is active.
+        # Create all panels at startup
         self.database_panel = DatabasePanel()
         self.phase_diagram_panel = PhaseDiagramPanel()
         self.equilibrium_panel = EquilibriumPanel()
@@ -488,10 +509,9 @@ class MainWindow(QMainWindow):
                       self.driving_force_panel, self.t0_panel,
                       self.volume_panel):
             panel.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
             )
 
-        self.tabs.addTab(self.database_panel, "Database")
         self.tabs.addTab(self.phase_diagram_panel, "Phase Diagram")
         self.tabs.addTab(self.equilibrium_panel, "Equilibrium")
         self.tabs.addTab(self.stepping_panel, "Stepping")
@@ -503,8 +523,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.t0_panel, "T-Zero")
         self.tabs.addTab(self.volume_panel, "Volume")
 
-        # Disable calculation tabs until database is loaded
-        for i in range(1, self.tabs.count()):
+        # Disable all tabs until database is loaded
+        for i in range(self.tabs.count()):
             self.tabs.setTabEnabled(i, False)
 
         layout.addWidget(self.tabs)
@@ -543,7 +563,6 @@ class MainWindow(QMainWindow):
         self.addAction(run_action)
 
     def _shortcut_open_database(self):
-        self.tabs.setCurrentIndex(0)
         self.database_panel._browse_file()
 
     def _switch_tab(self, index: int):
@@ -645,49 +664,111 @@ class MainWindow(QMainWindow):
         # Connect history panel re-run signal
         self.history_panel.rerun_requested.connect(self._on_history_rerun)
 
-    def _on_tab_changed(self, index: int):
-        # Map tab index to stepper step (3 steps: Load, Configure & Calculate, Analyze & Export)
-        if index == 0:
-            step = 0
-        else:
-            step = 1  # All calculation tabs are step 1 (Configure & Calculate)
-        self.stepper.set_current_step(step)
+    def _make_placeholder(self, key: str) -> QWidget:
+        """Create a lightweight placeholder widget for a deferred panel."""
+        w = QWidget()
+        w._deferred_key = key
+        w.update_database = lambda *a, **k: None
+        w.set_temp_unit = lambda *a, **k: None
+        w.set_comp_unit = lambda *a, **k: None
+        # Store a dummy signal
+        w.calculation_done = None
+        return w
 
-    def _on_stepper_clicked(self, step: int):
-        # Map stepper step to tab index
-        # Step 0 -> Database, Step 1 -> Phase Diagram, Step 2 -> keep current tab
-        if step == 0:
-            target = 0
-        elif step == 1:
-            target = 1
-        elif step == 2:
-            # Stay on the current tab (user's last calculation tab)
-            target = self.tabs.currentIndex()
-        else:
-            target = 0
-        if self.tabs.isTabEnabled(target):
-            self.tabs.setCurrentIndex(target)
+    def _materialize_panel(self, index: int) -> QWidget:
+        """Replace a placeholder with the real panel on first visit."""
+        placeholder = self.tabs.widget(index)
+        key = getattr(placeholder, '_deferred_key', None)
+        if key is None:
+            return placeholder  # already real
+
+        panel_classes = {
+            "ternary": TernaryPanel,
+            "scheil": ScheilPanel,
+            "thermo": ThermoPropertiesPanel,
+            "single_phase": SinglePhasePanel,
+            "driving_force": DrivingForcePanel,
+            "t0": T0Panel,
+            "volume": VolumePanel,
+        }
+        panel_attrs = {
+            "ternary": "ternary_panel",
+            "scheil": "scheil_panel",
+            "thermo": "thermo_panel",
+            "single_phase": "single_phase_panel",
+            "driving_force": "driving_force_panel",
+            "t0": "t0_panel",
+            "volume": "volume_panel",
+        }
+
+        cls = panel_classes.get(key)
+        attr = panel_attrs.get(key)
+        if cls is None:
+            return placeholder
+
+        # Create the real panel
+        panel = cls()
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+
+        # Replace in tab widget -- block signals to prevent recursive materialization
+        tab_text = self.tabs.tabText(index)
+        self.tabs.blockSignals(True)
+        self.tabs.removeTab(index)
+        self.tabs.insertTab(index, panel, tab_text)
+        self.tabs.setCurrentIndex(index)
+        self.tabs.blockSignals(False)
+
+        # Update reference
+        setattr(self, attr, panel)
+
+        # Wire signals
+        if hasattr(panel, 'set_temp_unit'):
+            self.temp_unit_changed.connect(panel.set_temp_unit)
+        if hasattr(panel, 'set_comp_unit'):
+            self.comp_unit_changed.connect(panel.set_comp_unit)
+        if hasattr(panel, 'calculation_done'):
+            panel.calculation_done.connect(
+                lambda e, c, s, n=tab_text: self.history_panel.add_entry(n, e, c, s))
+
+        # Load database if available
+        if hasattr(self, '_db') and self._db is not None:
+            panel.update_database(self._db, self._db_elements, self._db_phases)
+
+        return panel
+
+    def _on_tab_changed(self, index: int):
+        pass
 
     def _on_database_loaded(self, db, elements, phases):
         # Enable all tabs
-        for i in range(1, self.tabs.count()):
+        for i in range(self.tabs.count()):
             self.tabs.setTabEnabled(i, True)
 
-        # Mark step 1 (Load Database) as completed
-        self.stepper.mark_completed(0)
-        self.stepper.set_current_step(1)
+        # Update the database bar
+        db_name = self.database_panel.file_path_edit.text().split("/")[-1].split("\\")[-1]
+        self.db_path_label.setText(f"\u2705 {db_name}")
+        self.db_path_label.setStyleSheet("color: #81C784; font-size: 12px; font-weight: bold;")
+        # Show elements in compact form
+        el_display = ", ".join(elements[:12])
+        if len(elements) > 12:
+            el_display += f"... ({len(elements)} total)"
+        self.db_elements_label.setText(f"Elements: {el_display}")
+
+        # Store database info
+        self._db = db
+        self._db_elements = elements
+        self._db_phases = phases
 
         # Update all panels
-        self.phase_diagram_panel.update_database(db, elements, phases)
-        self.equilibrium_panel.update_database(db, elements, phases)
-        self.stepping_panel.update_database(db, elements, phases)
-        self.ternary_panel.update_database(db, elements, phases)
-        self.scheil_panel.update_database(db, elements, phases)
-        self.thermo_panel.update_database(db, elements, phases)
-        self.single_phase_panel.update_database(db, elements, phases)
-        self.driving_force_panel.update_database(db, elements, phases)
-        self.t0_panel.update_database(db, elements, phases)
-        self.volume_panel.update_database(db, elements, phases)
+        for panel in [self.phase_diagram_panel, self.equilibrium_panel,
+                      self.stepping_panel, self.ternary_panel,
+                      self.scheil_panel, self.thermo_panel,
+                      self.single_phase_panel, self.driving_force_panel,
+                      self.t0_panel, self.volume_panel]:
+            try:
+                panel.update_database(db, elements, phases)
+            except Exception:
+                pass
 
         # Update dock widgets
         self.db_explorer_panel.update_database(db, elements, phases)
@@ -765,9 +846,7 @@ class MainWindow(QMainWindow):
         ep.temp_spin.setValue((preset.t_min_k + preset.t_max_k) / 2)
 
         # Navigate to phase diagram tab
-        self.tabs.setCurrentIndex(1)
-        self.stepper.mark_completed(1)
-        self.stepper.set_current_step(2)
+        self.tabs.setCurrentIndex(0)
 
         self.statusBar().showMessage(
             f"Preset applied: {preset.name} ({preset.designation}) - "
@@ -851,7 +930,6 @@ class MainWindow(QMainWindow):
         for url in event.mimeData().urls():
             path = url.toLocalFile()
             if path.lower().endswith((".tdb", ".dat")):
-                self.tabs.setCurrentIndex(0)
                 self.database_panel.load_file(path)
                 self.statusBar().showMessage(f"Loading dropped file: {os.path.basename(path)}")
                 event.acceptProposedAction()
@@ -863,28 +941,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _maybe_show_welcome(self):
-        # Skip welcome dialog in offscreen/headless mode
-        import os
-        if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-            return
-
-        settings = QSettings("CalcPHAD", "CalcPHAD")
-        if settings.value("shown_welcome", False, type=bool):
-            return
-
-        dialog = WelcomeDialog(self)
-        result = dialog.exec()
-
-        if result == QDialog.DialogCode.Accepted:
-            if dialog.dont_show_cb.isChecked():
-                settings.setValue("shown_welcome", True)
-            if dialog.result_action == "sample":
-                self._load_sample_database()
-            elif dialog.result_action == "open":
-                self._shortcut_open_database()
-
-        # Show tutorial on first launch
-        TutorialOverlay.show_if_first_launch(self)
+        # Auto-load the bundled COST507 database on startup
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self._load_sample_database)
 
     def _load_sample_database(self):
         """Load the bundled COST507.tdb sample database."""

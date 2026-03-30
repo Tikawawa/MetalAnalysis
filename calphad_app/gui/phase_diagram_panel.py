@@ -56,6 +56,7 @@ class PhaseDiagramPanel(QWidget):
         self._last_t_max_k = 2000.0
         self._compare_mode: bool = False
         self._phase_lookup: list[tuple[float, float, str]] = []
+        self._hover_annotation = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -77,9 +78,7 @@ class PhaseDiagramPanel(QWidget):
 
         # --- Educational info panel ---
         info_data = TAB_INFO.get("phase_diagram", {})
-        self.info_group = QGroupBox("What Is This? (click to expand)")
-        self.info_group.setCheckable(True)
-        self.info_group.setChecked(False)
+        self.info_group = QGroupBox("What Is This?")
         info_layout = QVBoxLayout()
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
@@ -96,11 +95,9 @@ class PhaseDiagramPanel(QWidget):
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        self._info_visible = False
-        self._info_text.setVisible(False)
+        self._info_text.setVisible(True)
         info_layout.addWidget(self._info_text)
         self.info_group.setLayout(info_layout)
-        self.info_group.toggled.connect(self._toggle_info)
         layout.addWidget(self.info_group)
 
         # Controls
@@ -334,6 +331,12 @@ class PhaseDiagramPanel(QWidget):
             self._info_visible = checked
         else:
             self._info_visible = not self._info_visible
+        # Defer visibility change to avoid Qt layout re-entrancy segfault
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, self._apply_info_visibility)
+
+    def _apply_info_visibility(self):
+        """Apply the info panel visibility (deferred from toggle to avoid segfault)."""
         self._info_text.setVisible(self._info_visible)
         if self._info_visible:
             self.info_group.setTitle("What Is This? (click to collapse)")
@@ -441,6 +444,7 @@ class PhaseDiagramPanel(QWidget):
 
         # Clear and plot with translated phase names in legend
         self.figure.clear()
+        self._hover_annotation = None  # old annotation destroyed by clear()
         plot_binary_phase_diagram(self.figure, strategy, el1, el2, t_min, t_max,
                                   comp_unit=self._comp_unit)
         self._apply_phase_name_translations()
@@ -575,27 +579,55 @@ class PhaseDiagramPanel(QWidget):
         self.status_label.setStyleSheet("color: #CE93D8;")
 
     def _on_canvas_move(self, event) -> None:
-        """Handle mouse motion for live crosshair coordinates and phase tooltip."""
+        """Handle mouse motion for live crosshair coordinates and phase hover label."""
         if event.inaxes is None or event.xdata is None or event.ydata is None:
-            self.canvas.setToolTip("")
+            if self._hover_annotation is not None:
+                self._hover_annotation.set_visible(False)
+                self.canvas.draw_idle()
             return
         x_comp = event.xdata
         t_k = event.ydata
         el2 = self.el2_combo.currentText()
 
-        # Find nearest phase region for tooltip
+        # Find nearest phase region
         phase_text = self._find_phase_at(x_comp, t_k)
         if phase_text:
-            self.canvas.setToolTip(phase_text)
+            self._show_hover_label(event.inaxes, x_comp, t_k, phase_text)
             self.status_label.setText(
                 f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}   |   {phase_text}"
             )
         else:
-            self.canvas.setToolTip("")
+            if self._hover_annotation is not None:
+                self._hover_annotation.set_visible(False)
+                self.canvas.draw_idle()
             self.status_label.setText(
                 f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}"
             )
         self.status_label.setStyleSheet("color: #B0BEC5;")
+
+    def _show_hover_label(self, ax, x, t, text):
+        """Show or update a hover annotation on the plot at (x, t)."""
+        if self._hover_annotation is None:
+            self._hover_annotation = ax.annotate(
+                text,
+                xy=(x, t),
+                xytext=(15, 15),
+                textcoords="offset points",
+                fontsize=9,
+                color="white",
+                bbox=dict(
+                    boxstyle="round,pad=0.4",
+                    facecolor="#2d2d3e",
+                    edgecolor="#888888",
+                    alpha=0.95,
+                ),
+                zorder=50,
+            )
+        else:
+            self._hover_annotation.xy = (x, t)
+            self._hover_annotation.set_text(text)
+            self._hover_annotation.set_visible(True)
+        self.canvas.draw_idle()
 
     def _find_phase_at(self, x: float, t: float) -> str | None:
         """Find the phase region label nearest to (x, T) using the lookup table."""

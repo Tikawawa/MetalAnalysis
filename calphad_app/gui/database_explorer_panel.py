@@ -10,7 +10,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox, QDockWidget, QHBoxLayout, QHeaderView,
-    QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+    QLabel, QPushButton, QScrollArea, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 from pycalphad import Database
@@ -72,6 +72,11 @@ class DatabaseExplorerPanel(QDockWidget):
     # ------------------------------------------------------------------
 
     def _setup_ui(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setSpacing(8)
@@ -157,7 +162,8 @@ class DatabaseExplorerPanel(QDockWidget):
         )
         layout.addWidget(self.count_label)
 
-        self.setWidget(container)
+        scroll.setWidget(container)
+        self.setWidget(scroll)
 
     # ------------------------------------------------------------------
     # Database update

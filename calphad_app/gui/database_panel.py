@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal, QMimeData
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QMessageBox, QPushButton, QProgressBar,
-    QVBoxLayout, QWidget,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from pycalphad import Database
@@ -117,7 +117,16 @@ class DatabasePanel(QWidget):
     # ------------------------------------------------------------------
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background-color: transparent; border: none; }")
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setSpacing(12)
 
         # Title
@@ -243,6 +252,9 @@ class DatabasePanel(QWidget):
 
         layout.addLayout(results_layout)
         layout.addStretch()
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     # ------------------------------------------------------------------
     # Preset combo helpers
