@@ -75,20 +75,12 @@ class PhaseDiagramPanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        # --- Educational info panel (collapsible) ---
+        # --- Educational info panel ---
         info_data = TAB_INFO.get("phase_diagram", {})
-        self._info_btn = QPushButton("▶  What Is This?  (click to learn)")
-        self._info_btn.setFlat(True)
-        self._info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._info_btn.setStyleSheet(
-            "QPushButton { color: #4FC3F7; font-size: 13px; font-weight: bold; "
-            "text-align: left; padding: 6px 12px; border: 1px solid #333355; "
-            "border-radius: 4px; background: #16213e; }"
-            "QPushButton:hover { background: #1a2a4a; border-color: #4FC3F7; }"
-        )
-        self._info_btn.clicked.connect(self._toggle_info)
-        layout.addWidget(self._info_btn)
-
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
@@ -97,16 +89,19 @@ class PhaseDiagramPanel(QWidget):
         self._info_text.setWordWrap(True)
         self._info_text.setTextFormat(Qt.TextFormat.RichText)
         self._info_text.setStyleSheet(
-            "color: #ccccdd; font-size: 13px; padding: 10px 14px; "
-            "background: #16213e; border: 1px solid #333355; border-radius: 4px;"
+            "color: #ccccdd; font-size: 13px; padding: 10px 14px;"
         )
         self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
+        self._info_visible = False
         self._info_text.setVisible(False)
-        layout.addWidget(self._info_text)
+        info_layout.addWidget(self._info_text)
+        self.info_group.setLayout(info_layout)
+        self.info_group.toggled.connect(self._toggle_info)
+        layout.addWidget(self.info_group)
 
         # Controls
         controls_group = QGroupBox("Parameters")
@@ -333,14 +328,17 @@ class PhaseDiagramPanel(QWidget):
     # Database update
     # ------------------------------------------------------------------
 
-    def _toggle_info(self):
+    def _toggle_info(self, checked=None):
         """Toggle the educational info panel visibility."""
-        visible = not self._info_text.isVisible()
-        self._info_text.setVisible(visible)
-        if visible:
-            self._info_btn.setText("▼  What Is This?  (click to hide)")
+        if checked is not None:
+            self._info_visible = checked
         else:
-            self._info_btn.setText("▶  What Is This?  (click to learn)")
+            self._info_visible = not self._info_visible
+        self._info_text.setVisible(self._info_visible)
+        if self._info_visible:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         self.db = db
@@ -447,6 +445,9 @@ class PhaseDiagramPanel(QWidget):
                                   comp_unit=self._comp_unit)
         self._apply_phase_name_translations()
         self.canvas.draw()
+
+        # Build phase region lookup for hover tooltips
+        self._phase_lookup = build_phase_region_lookup(strategy, t_min, t_max)
 
         self.export_png_btn.setEnabled(True)
         self.compare_btn.setEnabled(True)
@@ -574,16 +575,50 @@ class PhaseDiagramPanel(QWidget):
         self.status_label.setStyleSheet("color: #CE93D8;")
 
     def _on_canvas_move(self, event) -> None:
-        """Handle mouse motion for live crosshair coordinates."""
+        """Handle mouse motion for live crosshair coordinates and phase tooltip."""
         if event.inaxes is None or event.xdata is None or event.ydata is None:
+            self.canvas.setToolTip("")
             return
         x_comp = event.xdata
         t_k = event.ydata
         el2 = self.el2_combo.currentText()
-        self.status_label.setText(
-            f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}"
-        )
+
+        # Find nearest phase region for tooltip
+        phase_text = self._find_phase_at(x_comp, t_k)
+        if phase_text:
+            self.canvas.setToolTip(phase_text)
+            self.status_label.setText(
+                f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}   |   {phase_text}"
+            )
+        else:
+            self.canvas.setToolTip("")
+            self.status_label.setText(
+                f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}"
+            )
         self.status_label.setStyleSheet("color: #B0BEC5;")
+
+    def _find_phase_at(self, x: float, t: float) -> str | None:
+        """Find the phase region label nearest to (x, T) using the lookup table."""
+        if not self._phase_lookup:
+            return None
+
+        # Normalize x (0-1) and T to comparable scales
+        t_range = self._last_t_max_k - self._last_t_min_k
+        if t_range <= 0:
+            return None
+
+        best_dist = float("inf")
+        best_label = None
+        for px, pt, label in self._phase_lookup:
+            # Scale x by temperature range so distances are comparable
+            dx = (x - px) * t_range
+            dt = t - pt
+            dist = dx * dx + dt * dt
+            if dist < best_dist:
+                best_dist = dist
+                best_label = label
+
+        return best_label
 
     # ------------------------------------------------------------------
     # Export PNG with metadata subtitle

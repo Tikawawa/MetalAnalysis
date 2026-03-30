@@ -340,20 +340,12 @@ class T0Panel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        # --- Educational info panel (collapsible) ---
+        # --- Educational info panel ---
         info_data = TAB_INFO.get("t_zero", {})
-        self._info_btn = QPushButton("▶  What Is This?  (click to learn)")
-        self._info_btn.setFlat(True)
-        self._info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._info_btn.setStyleSheet(
-            "QPushButton { color: #4FC3F7; font-size: 13px; font-weight: bold; "
-            "text-align: left; padding: 6px 12px; border: 1px solid #333355; "
-            "border-radius: 4px; background: #16213e; }"
-            "QPushButton:hover { background: #1a2a4a; border-color: #4FC3F7; }"
-        )
-        self._info_btn.clicked.connect(self._toggle_info)
-        layout.addWidget(self._info_btn)
-
+        self.info_group = QGroupBox("What Is This? (click to expand)")
+        self.info_group.setCheckable(True)
+        self.info_group.setChecked(False)
+        info_layout = QVBoxLayout()
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
@@ -362,16 +354,19 @@ class T0Panel(QWidget):
         self._info_text.setWordWrap(True)
         self._info_text.setTextFormat(Qt.TextFormat.RichText)
         self._info_text.setStyleSheet(
-            "color: #ccccdd; font-size: 13px; padding: 10px 14px; "
-            "background: #16213e; border: 1px solid #333355; border-radius: 4px;"
+            "color: #ccccdd; font-size: 13px; padding: 10px 14px;"
         )
         self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
+        self._info_visible = False
         self._info_text.setVisible(False)
-        layout.addWidget(self._info_text)
+        info_layout.addWidget(self._info_text)
+        self.info_group.setLayout(info_layout)
+        self.info_group.toggled.connect(self._toggle_info)
+        layout.addWidget(self.info_group)
 
         # --- System group ---
         system_group = QGroupBox("System")
@@ -657,14 +652,17 @@ class T0Panel(QWidget):
     # Database update
     # ------------------------------------------------------------------
 
-    def _toggle_info(self):
+    def _toggle_info(self, checked=None):
         """Toggle the educational info panel visibility."""
-        visible = not self._info_text.isVisible()
-        self._info_text.setVisible(visible)
-        if visible:
-            self._info_btn.setText("▼  What Is This?  (click to hide)")
+        if checked is not None:
+            self._info_visible = checked
         else:
-            self._info_btn.setText("▶  What Is This?  (click to learn)")
+            self._info_visible = not self._info_visible
+        self._info_text.setVisible(self._info_visible)
+        if self._info_visible:
+            self.info_group.setTitle("What Is This? (click to collapse)")
+        else:
+            self.info_group.setTitle("What Is This? (click to expand)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         """Called when a new database is loaded."""
