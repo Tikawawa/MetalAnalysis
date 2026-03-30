@@ -515,7 +515,14 @@ def plot_ternary_isothermal(
     temperature: float,
     subtitle: str | None = None,
 ) -> None:
-    """Plot a ternary isothermal section."""
+    """Plot a ternary isothermal section as a proper triangle.
+
+    Uses pycalphad's TriangularAxes projection for correct 3-axis display.
+    The x and y composition variables are passed explicitly so that
+    pycalphad knows which elements go on which triangle edges.
+    """
+    from pycalphad import variables as v_mod
+
     fig.clear()
     fig.patch.set_facecolor("#1e1e2e")
 
@@ -524,14 +531,19 @@ def plot_ternary_isothermal(
         import pycalphad.plot.triangular  # noqa: F401  -- registers 'triangular' projection
         ax = fig.add_subplot(111, projection="triangular")
     except Exception:
-        # Fallback if triangular projection unavailable
         ax = fig.add_subplot(111)
 
     ax.set_facecolor("#1e1e2e")
 
     try:
         from pycalphad.mapping.plotting import plot_ternary
-        plot_ternary(strategy, ax=ax)
+        # Pass x and y composition variables so pycalphad maps them
+        # to the correct triangle axes (el2 = x-axis, el3 = y-axis)
+        plot_ternary(
+            strategy, ax=ax,
+            x=v_mod.X(el2.upper()),
+            y=v_mod.X(el3.upper()),
+        )
     except Exception as exc:
         import traceback
         traceback.print_exc()
@@ -545,8 +557,15 @@ def plot_ternary_isothermal(
         f"{el1}-{el2}-{el3} at {temperature:.0f} K ({k_to_c(temperature):.0f} \u00b0C)",
         color="white", fontsize=14, fontweight="bold",
     )
+
+    # Label triangle axes with element names
+    try:
+        ax.set_xlabel(f"X({el2})", color="white", fontsize=11)
+        ax.set_ylabel(f"X({el3})", color="white", fontsize=11)
+    except Exception:
+        pass
+
     ax.tick_params(colors="white")
-    # TriangularAxes may not have standard spines -- guard against it
     try:
         for spine in ax.spines.values():
             spine.set_color("#555555")
