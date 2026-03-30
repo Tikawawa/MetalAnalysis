@@ -1069,7 +1069,7 @@ class SteppingPanel(QWidget):
             )
 
     def _export_png(self):
-        if not self.figure:
+        if not self.canvas.is_materialized:
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Stepping Plot", "stepping.png",
@@ -1083,7 +1083,7 @@ class SteppingPanel(QWidget):
         annotation = self.canvas.figure.text(
             0.01, 0.01, conditions,
             fontsize=7, color="#888888",
-            transform=self.figure.transFigure,
+            transform=self.canvas.figure.transFigure,
             ha="left", va="bottom",
         )
 

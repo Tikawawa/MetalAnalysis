@@ -1101,8 +1101,8 @@ class DrivingForcePanel(QWidget):
         temperature: float,
     ):
         """Plot a horizontal bar chart of driving forces."""
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
         ax.set_facecolor("#1a1a2e")
 
         # Filter out NaN values for plotting
@@ -1113,7 +1113,7 @@ class DrivingForcePanel(QWidget):
                 transform=ax.transAxes, ha="center", va="center",
                 color="white", fontsize=12,
             )
-            self.figure.tight_layout()
+            self.canvas.figure.tight_layout()
             return
 
         phases = [p for p, _ in valid]
@@ -1149,7 +1149,7 @@ class DrivingForcePanel(QWidget):
         for spine in ax.spines.values():
             spine.set_color("#555555")
 
-        self.figure.tight_layout()
+        self.canvas.figure.tight_layout()
 
     def _show_point_summary(
         self,
@@ -1343,8 +1343,8 @@ class DrivingForcePanel(QWidget):
         threshold: float,
     ):
         """Plot driving force vs temperature for all metastable phases."""
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
         ax.set_facecolor("#1a1a2e")
 
         if not sweep_data:
@@ -1353,7 +1353,7 @@ class DrivingForcePanel(QWidget):
                 transform=ax.transAxes, ha="center", va="center",
                 color="white", fontsize=12,
             )
-            self.figure.tight_layout()
+            self.canvas.figure.tight_layout()
             return
 
         color_idx = 0
@@ -1397,7 +1397,7 @@ class DrivingForcePanel(QWidget):
         for spine in ax.spines.values():
             spine.set_color("#555555")
 
-        self.figure.tight_layout()
+        self.canvas.figure.tight_layout()
 
     def _show_sweep_summary(
         self,
@@ -1580,7 +1580,7 @@ class DrivingForcePanel(QWidget):
     # -------------------------------------------------------- export PNG
 
     def _export_png(self):
-        if not self.figure:
+        if not self.canvas.is_materialized:
             return
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Driving Force Chart", "driving_force.png",
@@ -1604,7 +1604,7 @@ class DrivingForcePanel(QWidget):
         annotation = self.canvas.figure.text(
             0.01, 0.01, subtitle,
             fontsize=7, color="#888888",
-            transform=self.figure.transFigure,
+            transform=self.canvas.figure.transFigure,
             ha="left", va="bottom",
         )
 

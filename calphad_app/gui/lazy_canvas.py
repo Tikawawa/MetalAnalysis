@@ -75,6 +75,11 @@ class LazyCanvas(QWidget):
         if self._canvas is not None:
             self._canvas.draw()
 
+    def draw_idle(self):
+        """Schedule a deferred redraw (no-op if not yet materialized)."""
+        if self._canvas is not None:
+            self._canvas.draw_idle()
+
     def setMinimumHeight(self, h: int):
         super().setMinimumHeight(h)
         if self._canvas is not None:

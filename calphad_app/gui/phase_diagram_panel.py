@@ -216,7 +216,7 @@ class PhaseDiagramPanel(QWidget):
         # Main (right-side / only) canvas
         self.canvas = LazyCanvas(figsize=(8, 6), dpi=100)
         self.canvas.setMinimumHeight(400)
-        self.canvas.setToolTip(TOOLTIPS["pd_canvas"])
+        self.canvas.setToolTip("")
 
         # Compare (left-side) canvas -- hidden by default
         self.compare_canvas = LazyCanvas(figsize=(8, 6), dpi=100)
@@ -442,7 +442,7 @@ class PhaseDiagramPanel(QWidget):
         t_max = self._last_t_max_k
 
         # Clear and plot with translated phase names in legend
-        self.figure.clear()
+        self.canvas.figure.clear()
         self._hover_annotation = None  # old annotation destroyed by clear()
         plot_binary_phase_diagram(self.canvas.figure, strategy, el1, el2, t_min, t_max,
                                   comp_unit=self._comp_unit)
@@ -472,7 +472,7 @@ class PhaseDiagramPanel(QWidget):
     def _apply_phase_name_translations(self) -> None:
         """Replace raw CALPHAD phase names in the plot legend with
         human-readable short names from translate_phase_short()."""
-        for ax in self.figure.get_axes():
+        for ax in self.canvas.figure.get_axes():
             legend = ax.get_legend()
             if legend is None:
                 continue
@@ -580,9 +580,7 @@ class PhaseDiagramPanel(QWidget):
     def _on_canvas_move(self, event) -> None:
         """Handle mouse motion for live crosshair coordinates and phase hover label."""
         if event.inaxes is None or event.xdata is None or event.ydata is None:
-            if self._hover_annotation is not None:
-                self._hover_annotation.set_visible(False)
-                self.canvas.draw_idle()
+            self._hide_hover()
             return
         x_comp = event.xdata
         t_k = event.ydata
@@ -591,22 +589,38 @@ class PhaseDiagramPanel(QWidget):
         # Find nearest phase region
         phase_text = self._find_phase_at(x_comp, t_k)
         if phase_text:
-            self._show_hover_label(event.inaxes, x_comp, t_k, phase_text)
+            self._show_hover_label(x_comp, t_k, phase_text)
             self.status_label.setText(
                 f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}   |   {phase_text}"
             )
         else:
-            if self._hover_annotation is not None:
-                self._hover_annotation.set_visible(False)
-                self.canvas.draw_idle()
+            self._hide_hover()
             self.status_label.setText(
                 f"X({el2}) = {x_comp:.4f}   T = {format_temp(t_k)}"
             )
         self.status_label.setStyleSheet("color: #B0BEC5;")
 
-    def _show_hover_label(self, ax, x, t, text):
+    def _hide_hover(self):
+        """Hide the hover annotation if it exists."""
+        if self._hover_annotation is not None:
+            self._hover_annotation.set_visible(False)
+            self.canvas.draw_idle()
+
+    def _show_hover_label(self, x, t, text):
         """Show or update a hover annotation on the plot at (x, t)."""
-        if self._hover_annotation is None:
+        # Get the primary axes (first one, not the secondary Celsius axis)
+        axes = self.canvas.figure.get_axes()
+        if not axes:
+            return
+        ax = axes[0]
+
+        if self._hover_annotation is None or self._hover_annotation.axes is not ax:
+            # Create new annotation (or recreate if axes changed after recalc)
+            if self._hover_annotation is not None:
+                try:
+                    self._hover_annotation.remove()
+                except Exception:
+                    pass
             self._hover_annotation = ax.annotate(
                 text,
                 xy=(x, t),
@@ -672,7 +686,7 @@ class PhaseDiagramPanel(QWidget):
         subtitle = (
             f"{el1}-{el2} | T: {format_temp(t_min)} to {format_temp(t_max)} | P = 1 atm"
         )
-        axes = self.figure.get_axes()
+        axes = self.canvas.figure.get_axes()
         subtitle_text = None
         if axes:
             subtitle_text = self.canvas.figure.text(
@@ -681,7 +695,7 @@ class PhaseDiagramPanel(QWidget):
                 fontsize=8, color="#90A4AE",
                 fontstyle="italic",
             )
-            self.figure.subplots_adjust(bottom=0.12)
+            self.canvas.figure.subplots_adjust(bottom=0.12)
 
         self.canvas.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
 
@@ -709,7 +723,7 @@ class PhaseDiagramPanel(QWidget):
             self._compare_mode = False
             self.compare_canvas.setVisible(False)
             self.compare_btn.setText("Compare")
-            self.compare_figure.clear()
+            self.compare_canvas.figure.clear()
             self.compare_canvas.draw()
             self.status_label.setText("Compare mode off.")
             self.status_label.setStyleSheet("color: #B0BEC5;")
@@ -720,7 +734,7 @@ class PhaseDiagramPanel(QWidget):
             self.compare_btn.setText("Exit Compare")
 
             # Copy the current figure content to the compare figure
-            self.compare_figure.clear()
+            self.compare_canvas.figure.clear()
             if self._last_strategy is not None:
                 el1 = self.el1_combo.currentText()
                 el2 = self.el2_combo.currentText()
@@ -732,7 +746,7 @@ class PhaseDiagramPanel(QWidget):
                     comp_unit=self._comp_unit,
                 )
                 # Apply phase name translations to the compare figure
-                for ax in self.compare_figure.get_axes():
+                for ax in self.compare_canvas.figure.get_axes():
                     legend = ax.get_legend()
                     if legend is None:
                         continue

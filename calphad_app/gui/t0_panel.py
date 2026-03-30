@@ -1026,8 +1026,8 @@ class T0Panel(QWidget):
         p2_label: str,
     ) -> None:
         """Plot the T0 line on the matplotlib figure."""
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
 
         ax.set_facecolor("#1e1e2e")
         ax.tick_params(colors="white")
@@ -1081,7 +1081,7 @@ class T0Panel(QWidget):
         for spine in ax2.spines.values():
             spine.set_color("#555555")
 
-        self.figure.tight_layout()
+        self.canvas.figure.tight_layout()
         self.canvas.draw()
 
     # ------------------------------------------------------------------
@@ -1164,7 +1164,7 @@ class T0Panel(QWidget):
 
     def _export_png(self) -> None:
         """Export the T0 plot as a PNG image."""
-        if not self.figure.get_axes():
+        if not self.canvas.figure.get_axes():
             return
 
         path, _ = QFileDialog.getSaveFileName(
@@ -1178,7 +1178,7 @@ class T0Panel(QWidget):
         annotation = self.canvas.figure.text(
             0.01, 0.01, conditions,
             fontsize=7, color="#888888",
-            transform=self.figure.transFigure,
+            transform=self.canvas.figure.transFigure,
             ha="left", va="bottom",
         )
 

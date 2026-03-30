@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from matplotlib.figure import Figure
 from pycalphad.mapping import BinaryStrategy
+from pycalphad import variables as v
 
 from core.presets import translate_phase_short, ATOMIC_WEIGHTS
 from core.units import k_to_c
@@ -138,8 +139,7 @@ def plot_binary_phase_diagram(
     except Exception:
         pass  # Primary axis still works; skip secondary if it fails
 
-    # --- Labeled phase regions (#14) ---
-    _label_phase_regions(ax, strategy, el2, t_min, t_max)
+    # Phase region labels removed — hover tooltip now provides this info
 
     # Educational annotation (Improvement 20)
     edu_text = (
@@ -300,7 +300,7 @@ def build_phase_region_lookup(strategy, t_min: float, t_max: float
     for zpf_line in getattr(strategy, "zpf_lines", []):
         for point in zpf_line.points:
             try:
-                T = float(point.global_conditions.get("T", np.nan))
+                T = float(point.global_conditions.get(v.T, np.nan))
                 if np.isnan(T) or T < t_min or T > t_max:
                     continue
                 phase_names = sorted(
@@ -336,7 +336,7 @@ def _label_phase_regions(ax, strategy, comp_element: str,
     for zpf_line in getattr(strategy, "zpf_lines", []):
         for point in zpf_line.points:
             try:
-                T = float(point.global_conditions.get("T", np.nan))
+                T = float(point.global_conditions.get(v.T, np.nan))
                 if np.isnan(T) or T < t_min or T > t_max:
                     continue
                 phase_names = sorted(
@@ -398,7 +398,7 @@ def _plot_binary_manual(ax, strategy, el2: str) -> None:
     for zpf_line in strategy.zpf_lines:
         for point in zpf_line.points:
             try:
-                T = float(point.global_conditions.get("T", np.nan))
+                T = float(point.global_conditions.get(v.T, np.nan))
                 if np.isnan(T):
                     continue
                 for comp_set in point.stable_composition_sets:
@@ -566,6 +566,91 @@ def plot_equilibrium_bar(
     fig.tight_layout()
 
 
+def _add_ternary_annotations(ax, el1: str, el2: str, el3: str) -> None:
+    """Add vertex labels, third-edge ticks, and gridlines to a triangular axes.
+
+    The pycalphad TriangularAxes maps data coordinates as:
+        Bottom-left  (0, 0) = 100% el1 (the dependent component)
+        Bottom-right (1, 0) = 100% el2 (x-axis component)
+        Top apex     (0, 1) = 100% el3 (y-axis component)
+
+    The affine transform converts (data_x, data_y) to display via:
+        cart_x = data_x + 0.5 * data_y
+        cart_y = data_y * sqrt(3) / 2
+
+    So the triangle corners in *display* coords are:
+        (0, 0), (1, 0), (0.5, sqrt(3)/2)
+    """
+    import numpy as np
+    from matplotlib.collections import LineCollection
+
+    sqrt3_2 = np.sqrt(3) / 2.0
+
+    # --- Vertex labels (pure-component corners) ---
+    # Bottom-left = 100% el1, bottom-right = 100% el2, top = 100% el3
+    # Use the axes transData to convert; the triangular projection's
+    # transData already includes the shear, so we place in data coords.
+    # Data (0,0) -> bottom-left, data (1,0) -> bottom-right, data (0,1) -> top
+    ax.text(0.0, -0.06, el1, transform=ax.transData,
+            ha="center", va="top", color="#4FC3F7", fontsize=13, fontweight="bold")
+    ax.text(1.0, -0.06, el2, transform=ax.transData,
+            ha="center", va="top", color="#81C784", fontsize=13, fontweight="bold")
+    ax.text(0.0, 1.06, el3, transform=ax.transData,
+            ha="center", va="bottom", color="#FFB74D", fontsize=13, fontweight="bold")
+
+    # --- Third-edge (hypotenuse / right side) tick marks & labels ---
+    # The right edge runs from data (1, 0) [100% el2] to data (0, 1) [100% el3].
+    # Along this edge, el1 = 0 everywhere.  We label with the el3 fraction
+    # (= y in data coords) which goes from 0 at bottom-right to 1 at top.
+    tick_len = 0.02
+    for i in range(1, 10):
+        frac = i / 10.0
+        # Point on the hypotenuse: x = 1-frac, y = frac
+        px, py = 1.0 - frac, frac
+        # Outward normal direction for the hypotenuse (pointing right)
+        nx, ny = 1.0, 1.0
+        norm = np.sqrt(nx**2 + ny**2)
+        nx, ny = nx / norm, ny / norm
+        # Tick end point (in data coords)
+        tx, ty = px + tick_len * nx, py + tick_len * ny
+        # Draw tick line
+        ax.plot([px, tx], [py, ty], color="#555555", linewidth=0.8,
+                clip_on=False, transform=ax.transData)
+        # Label with el3 fraction (= y = frac along hypotenuse)
+        lx, ly = px + 4.0 * tick_len * nx, py + 4.0 * tick_len * ny
+        ax.text(lx, ly, f"{frac:.1f}", transform=ax.transData,
+                ha="center", va="center", color="#aaaacc", fontsize=7,
+                rotation=-60, clip_on=False)
+
+    # --- Internal gridlines (3 directions) ---
+    grid_segs = []
+    grid_color = "#333355"
+    for i in range(1, 10):
+        frac = i / 10.0
+        # Lines of constant el2 (x = const): vertical in data space
+        # From (frac, 0) to (frac, 1-frac)
+        grid_segs.append([(frac, 0.0), (frac, 1.0 - frac)])
+        # Lines of constant el3 (y = const): horizontal in data space
+        # From (0, frac) to (1-frac, frac)
+        grid_segs.append([(0.0, frac), (1.0 - frac, frac)])
+        # Lines of constant el1 (x + y = const): diagonal
+        # x + y = frac, from (frac, 0) to (0, frac)
+        grid_segs.append([(frac, 0.0), (0.0, frac)])
+
+    lc = LineCollection(grid_segs, colors=grid_color, linewidths=0.4,
+                        linestyles=":", transform=ax.transData, zorder=0)
+    ax.add_collection(lc)
+
+    # --- Axis-edge labels (composition meaning) ---
+    # Bottom edge: X(el2) increasing left to right
+    ax.text(0.5, -0.15, f"X({el2}) \u2192", transform=ax.transData,
+            ha="center", va="top", color="#81C784", fontsize=10)
+    # Left edge: X(el3) increasing bottom to top
+    ax.text(-0.12, 0.5, f"\u2191 X({el3})", transform=ax.transData,
+            ha="center", va="center", color="#FFB74D", fontsize=10,
+            rotation=60)
+
+
 def plot_ternary_isothermal(
     fig: Figure,
     strategy,
@@ -575,11 +660,11 @@ def plot_ternary_isothermal(
     temperature: float,
     subtitle: str | None = None,
 ) -> None:
-    """Plot a ternary isothermal section as a proper triangle.
+    """Plot a ternary isothermal section as a proper Gibbs triangle.
 
-    Uses pycalphad's TriangularAxes projection for correct 3-axis display.
-    The x and y composition variables are passed explicitly so that
-    pycalphad knows which elements go on which triangle edges.
+    Uses pycalphad's TriangularAxes projection for correct barycentric
+    coordinate display with all three edges labeled, vertex labels,
+    gridlines in three directions, and tick marks on the dependent edge.
     """
     from pycalphad import variables as v_mod
 
@@ -588,17 +673,16 @@ def plot_ternary_isothermal(
 
     # Register the triangular projection and create triangular axes
     try:
-        import pycalphad.plot.triangular  # noqa: F401  -- registers 'triangular' projection
+        import pycalphad.plot.triangular  # noqa: F401  -- registers projection
         ax = fig.add_subplot(111, projection="triangular")
     except Exception:
         ax = fig.add_subplot(111)
 
     ax.set_facecolor("#1e1e2e")
 
+    # Plot phase data from pycalphad strategy
     try:
         from pycalphad.mapping.plotting import plot_ternary
-        # Pass x and y composition variables so pycalphad maps them
-        # to the correct triangle axes (el2 = x-axis, el3 = y-axis)
         plot_ternary(
             strategy, ax=ax,
             x=v_mod.X(el2.upper()),
@@ -613,33 +697,47 @@ def plot_ternary_isothermal(
                 ha="center", va="center", color="#E57373", fontsize=11,
                 transform=ax.transAxes)
 
+    # Force correct limits (pycalphad's plot_binary calls autoscale which
+    # can override the triangular axes' hard-coded [0,1] limits)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    # Remove pycalphad's default title / axis labels (we add our own)
+    ax.set_title("")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    # Add proper ternary annotations: vertex labels, 3rd-edge ticks, gridlines
+    _add_ternary_annotations(ax, el1, el2, el3)
+
+    # Title
     ax.set_title(
-        f"{el1}-{el2}-{el3} at {temperature:.0f} K ({k_to_c(temperature):.0f} \u00b0C)",
-        color="white", fontsize=14, fontweight="bold",
+        f"{el1}\u2013{el2}\u2013{el3}  Isothermal Section\n"
+        f"{temperature:.0f} K  ({k_to_c(temperature):.0f} \u00b0C)",
+        color="white", fontsize=13, fontweight="bold", pad=20,
     )
 
-    # Label triangle axes with element names
-    try:
-        ax.set_xlabel(f"X({el2})", color="white", fontsize=11)
-        ax.set_ylabel(f"X({el3})", color="white", fontsize=11)
-    except Exception:
-        pass
+    # Style spines (all 3 triangle edges) for dark theme
+    for spine in ax.spines.values():
+        spine.set_color("#555555")
+        spine.set_linewidth(1.2)
 
-    ax.tick_params(colors="white")
-    try:
-        for spine in ax.spines.values():
-            spine.set_color("#555555")
-    except Exception:
-        pass
+    # Style existing tick labels (bottom and left edges)
+    ax.tick_params(axis="both", colors="#aaaacc", labelsize=8)
 
-    if ax.get_legend():
-        ax.get_legend().get_frame().set_facecolor("#2d2d3e")
-        for text in ax.get_legend().get_texts():
+    # Style legend (placed by pycalphad's plot_binary)
+    legend = ax.get_legend()
+    if legend:
+        legend.get_frame().set_facecolor("#2d2d3e")
+        legend.get_frame().set_edgecolor("#555555")
+        legend.get_frame().set_alpha(0.9)
+        for text in legend.get_texts():
             text.set_color("white")
 
     if subtitle:
         fig.text(0.5, 0.01, subtitle, ha="center", color="#888888", fontsize=9)
-    fig.tight_layout()
+
+    fig.subplots_adjust(left=0.12, right=0.78, top=0.86, bottom=0.14)
 
 
 def plot_composition_stepping(

@@ -738,8 +738,8 @@ class SinglePhasePanel(QWidget):
         results: dict[str, np.ndarray],
         property_name: str,
     ):
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+        self.canvas.figure.clear()
+        ax = self.canvas.figure.add_subplot(111)
 
         ax.set_facecolor("#1e1e2e")
         ax.tick_params(colors="white", which="both")
@@ -791,7 +791,7 @@ class SinglePhasePanel(QWidget):
         except Exception:
             pass
 
-        self.figure.tight_layout()
+        self.canvas.figure.tight_layout()
         self.canvas.draw()
 
     # -------------------------------------------------------- table
