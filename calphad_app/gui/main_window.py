@@ -230,10 +230,8 @@ class MainWindow(QMainWindow):
         # Apply initial learning mode state (hide advanced tabs, rename)
         self._on_learning_mode_toggle(True)
 
-        # "Did You Know?" rotating facts in status bar
-        self._fact_timer = QTimer(self)
-        self._fact_timer.timeout.connect(self._rotate_did_you_know)
-        self._fact_timer.start(30000)  # Every 30 seconds
+        # "Did You Know?" facts shown when switching tabs (no timer to avoid Qt conflicts)
+        # The timer-based approach was causing segfaults with PyQt6 6.10.2
 
     # ------------------------------------------------------------------
     # Toolbar with unit toggles
@@ -422,17 +420,19 @@ class MainWindow(QMainWindow):
             lambda vis: self.phase_info_toggle_btn.setChecked(vis)
         )
 
-        # Database explorer panel (right)
+        # Database explorer panel (tabified with phase info)
         self.db_explorer_panel = DatabaseExplorerPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.db_explorer_panel)
+        self.tabifyDockWidget(self.phase_info_panel, self.db_explorer_panel)
         self.db_explorer_panel.setVisible(False)
         self.db_explorer_panel.visibilityChanged.connect(
             lambda vis: self.db_explorer_toggle_btn.setChecked(vis)
         )
 
-        # Glossary panel (right)
+        # Glossary panel (tabified with phase info to avoid dock widget segfault)
         self.glossary_panel = GlossaryPanel(self)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.glossary_panel)
+        self.tabifyDockWidget(self.phase_info_panel, self.glossary_panel)
         self.glossary_panel.setVisible(False)
         self.glossary_panel.visibilityChanged.connect(
             lambda vis: self.glossary_toggle_btn.setChecked(vis)
@@ -737,7 +737,9 @@ class MainWindow(QMainWindow):
         return panel
 
     def _on_tab_changed(self, index: int):
-        pass
+        # Show a "Did you know?" fact when switching tabs
+        if self._learning_mode and index > 0:
+            self._rotate_did_you_know()
 
     def _on_database_loaded(self, db, elements, phases):
         # Enable all tabs
