@@ -349,30 +349,38 @@ class DrivingForcePanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        # --- Educational info panel ---
+        # --- Educational info panel (collapsible) ---
         info_data = TAB_INFO.get("driving_force", {})
-        self.info_group = QGroupBox("What Is This? (click to expand)")
-        self.info_group.setCheckable(True)
-        self.info_group.setChecked(False)
-        info_layout = QVBoxLayout()
-        self._info_text = QLabel()
-        self._info_text.setWordWrap(True)
-        self._info_text.setTextFormat(Qt.TextFormat.RichText)
-        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_btn = QPushButton("▶  What Is This?  (click to learn)")
+        self._info_btn.setFlat(True)
+        self._info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._info_btn.setStyleSheet(
+            "QPushButton { color: #4FC3F7; font-size: 13px; font-weight: bold; "
+            "text-align: left; padding: 6px 12px; border: 1px solid #333355; "
+            "border-radius: 4px; background: #16213e; }"
+            "QPushButton:hover { background: #1a2a4a; border-color: #4FC3F7; }"
+        )
+        self._info_btn.clicked.connect(self._toggle_info)
+        layout.addWidget(self._info_btn)
+
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet(
+            "color: #ccccdd; font-size: 13px; padding: 10px 14px; "
+            "background: #16213e; border: 1px solid #333355; border-radius: 4px;"
+        )
         self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(self._info_text)
-        self.info_group.setLayout(info_layout)
-        layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(self._toggle_info)
         self._info_text.setVisible(False)
+        layout.addWidget(self._info_text)
 
         # --- Composition inputs ---
         self.comp_group = QGroupBox("Alloy Composition")
@@ -710,13 +718,14 @@ class DrivingForcePanel(QWidget):
 
     # -------------------------------------------------------- database load
 
-    def _toggle_info(self, checked: bool):
+    def _toggle_info(self):
         """Toggle the educational info panel visibility."""
-        self._info_text.setVisible(checked)
-        if checked:
-            self.info_group.setTitle("What Is This? (click to collapse)")
+        visible = not self._info_text.isVisible()
+        self._info_text.setVisible(visible)
+        if visible:
+            self._info_btn.setText("▼  What Is This?  (click to hide)")
         else:
-            self.info_group.setTitle("What Is This? (click to expand)")
+            self._info_btn.setText("▶  What Is This?  (click to learn)")
 
     def update_database(self, db: Database, elements: list[str], phases: list[str]):
         """Called when the user loads a new database."""
@@ -1048,9 +1057,17 @@ class DrivingForcePanel(QWidget):
                 if cell is not None:
                     cell.setForeground(QColor(color))
 
-        self.results_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        # Smart column sizing
+        n_cols = self.results_table.columnCount()
+        if n_cols <= 8:
+            self.results_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
+        else:
+            self.results_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Interactive
+            )
+            self.results_table.horizontalHeader().setDefaultSectionSize(90)
 
         # --- Update chart (horizontal bar) ---
         self._plot_point_bars(sorted_phases, temperature)
@@ -1278,9 +1295,17 @@ class DrivingForcePanel(QWidget):
                 if cell is not None:
                     cell.setForeground(QColor(color))
 
-        self.results_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        # Smart column sizing
+        n_cols = self.results_table.columnCount()
+        if n_cols <= 8:
+            self.results_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
+        else:
+            self.results_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Interactive
+            )
+            self.results_table.horizontalHeader().setDefaultSectionSize(90)
 
         # --- Update chart (line plot) ---
         self._plot_sweep_lines(temperatures, sweep_data, threshold)
@@ -1361,11 +1386,12 @@ class DrivingForcePanel(QWidget):
             "Driving Force vs Temperature", color="white", fontsize=11, pad=10,
         )
         ax.tick_params(colors="white")
-        ax.legend(
-            loc="best", fontsize=7,
-            facecolor="#1a1a2e", edgecolor="#555555",
-            labelcolor="white", ncol=2,
-        )
+        handles, labels = ax.get_legend_handles_labels()
+        if len(handles) <= 8:
+            ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+        else:
+            ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                      facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
 
         for spine in ax.spines.values():
             spine.set_color("#555555")

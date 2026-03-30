@@ -286,30 +286,38 @@ class ScheilPanel(QWidget):
         title.setObjectName("heading")
         layout.addWidget(title)
 
-        # --- Educational info panel ---
+        # --- Educational info panel (collapsible) ---
         info_data = TAB_INFO.get("scheil", {})
-        self.info_group = QGroupBox("What Is This? (click to expand)")
-        self.info_group.setCheckable(True)
-        self.info_group.setChecked(False)
-        info_layout = QVBoxLayout()
-        self._info_text = QLabel()
-        self._info_text.setWordWrap(True)
-        self._info_text.setTextFormat(Qt.TextFormat.RichText)
-        self._info_text.setStyleSheet("color: #ccccdd; font-size: 13px; line-height: 1.5; padding: 8px;")
+        self._info_btn = QPushButton("▶  What Is This?  (click to learn)")
+        self._info_btn.setFlat(True)
+        self._info_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._info_btn.setStyleSheet(
+            "QPushButton { color: #4FC3F7; font-size: 13px; font-weight: bold; "
+            "text-align: left; padding: 6px 12px; border: 1px solid #333355; "
+            "border-radius: 4px; background: #16213e; }"
+            "QPushButton:hover { background: #1a2a4a; border-color: #4FC3F7; }"
+        )
+        self._info_btn.clicked.connect(self._toggle_info)
+        layout.addWidget(self._info_btn)
+
         simple = info_data.get("simple", "")
         analogy = info_data.get("analogy", "")
         tips = info_data.get("tips", [])
         tips_html = "".join(f"<li>{t}</li>" for t in tips)
+        self._info_text = QLabel()
+        self._info_text.setWordWrap(True)
+        self._info_text.setTextFormat(Qt.TextFormat.RichText)
+        self._info_text.setStyleSheet(
+            "color: #ccccdd; font-size: 13px; padding: 10px 14px; "
+            "background: #16213e; border: 1px solid #333355; border-radius: 4px;"
+        )
         self._info_text.setText(
             f'<p style="color: #e0e0e0;">{simple}</p>'
             f'<p style="color: #81C784;"><b>Think of it like:</b> {analogy}</p>'
             f'<p style="color: #FFB74D;"><b>Tips:</b></p><ul>{tips_html}</ul>'
         )
-        info_layout.addWidget(self._info_text)
-        self.info_group.setLayout(info_layout)
-        layout.addWidget(self.info_group)
-        self.info_group.toggled.connect(self._toggle_info)
         self._info_text.setVisible(False)
+        layout.addWidget(self._info_text)
 
         # --- Scheil availability warning ---
         if not _SCHEIL_AVAILABLE:
@@ -570,13 +578,14 @@ class ScheilPanel(QWidget):
 
     # -------------------------------------------------------- database load
 
-    def _toggle_info(self, checked: bool):
+    def _toggle_info(self):
         """Toggle the educational info panel visibility."""
-        self._info_text.setVisible(checked)
-        if checked:
-            self.info_group.setTitle("What Is This? (click to collapse)")
+        visible = not self._info_text.isVisible()
+        self._info_text.setVisible(visible)
+        if visible:
+            self._info_btn.setText("▼  What Is This?  (click to hide)")
         else:
-            self.info_group.setTitle("What Is This? (click to expand)")
+            self._info_btn.setText("▶  What Is This?  (click to learn)")
 
     def update_database(self, db: Database, elements: list[str],
                         phases: list[str]):
@@ -956,9 +965,17 @@ class ScheilPanel(QWidget):
             desc = self._phase_description(info["phase"])
             self.phase_table.setItem(i, 3, QTableWidgetItem(desc))
 
-        self.phase_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        # Smart column sizing
+        n_cols = self.phase_table.columnCount()
+        if n_cols <= 8:
+            self.phase_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Stretch
+            )
+        else:
+            self.phase_table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeMode.Interactive
+            )
+            self.phase_table.horizontalHeader().setDefaultSectionSize(90)
 
         # --- Stacked area chart ---
         self.phase_seq_fig.clear()
@@ -984,11 +1001,12 @@ class ScheilPanel(QWidget):
 
             ax.stackplot(t_arr, *y_arrays, labels=valid_phases,
                          colors=colors, alpha=0.85)
-            ax.legend(
-                loc="upper left", fontsize=8, framealpha=0.5,
-                facecolor="#2a2a3c", edgecolor="#555555",
-                labelcolor="white",
-            )
+            handles, labels = ax.get_legend_handles_labels()
+            if len(handles) <= 8:
+                ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+            else:
+                ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                          facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
             ax.set_xlim(max(t_arr), min(t_arr))  # High to low temperature
 
         self.phase_seq_fig.tight_layout()
@@ -1013,11 +1031,12 @@ class ScheilPanel(QWidget):
                     color=color, linewidth=1.8, label=el,
                 )
             ax.set_xlim(0, 1)
-            ax.legend(
-                loc="best", fontsize=9, framealpha=0.5,
-                facecolor="#2a2a3c", edgecolor="#555555",
-                labelcolor="white",
-            )
+            handles, labels = ax.get_legend_handles_labels()
+            if len(handles) <= 8:
+                ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+            else:
+                ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
+                          facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
 
         self.microseg_fig.tight_layout()
         self.microseg_canvas.draw()
