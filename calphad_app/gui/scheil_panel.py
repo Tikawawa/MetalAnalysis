@@ -279,7 +279,7 @@ class ScheilPanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Scheil Solidification")
         title.setObjectName("heading")
@@ -918,6 +918,7 @@ class ScheilPanel(QWidget):
 
         self.solidification_canvas.figure.tight_layout()
         self.solidification_canvas.draw()
+        self.solidification_canvas.enable_line_hover()
 
     def _fill_phase_sequence(self, temperatures: list[float],
                              phase_amounts: dict[str, list[float]],
@@ -1009,6 +1010,7 @@ class ScheilPanel(QWidget):
 
         self.phase_seq_canvas.figure.tight_layout()
         self.phase_seq_canvas.draw()
+        self.phase_seq_canvas.enable_line_hover()
 
     def _plot_microsegregation(self, fraction_solid: list[float],
                                liquid_comp: dict[str, list[float]]):
@@ -1038,6 +1040,7 @@ class ScheilPanel(QWidget):
 
         self.microseg_canvas.figure.tight_layout()
         self.microseg_canvas.draw()
+        self.microseg_canvas.enable_line_hover()
 
     @staticmethod
     def _phase_description(phase_name: str) -> str:

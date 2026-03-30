@@ -69,7 +69,7 @@ class PhaseDiagramPanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Binary Phase Diagram")
         title.setObjectName("heading")

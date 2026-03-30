@@ -332,7 +332,7 @@ class T0Panel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         # --- Title ---
         title = QLabel("T-Zero Calculator")
@@ -604,7 +604,7 @@ class T0Panel(QWidget):
         self.results_splitter.addWidget(self.results_table)
 
         # Plot
-        self.canvas = LazyCanvas(figsize=(6, 4), dpi=100)
+        self.canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.canvas.setMinimumHeight(350)
         self.results_splitter.addWidget(self.canvas)
 
@@ -1083,6 +1083,7 @@ class T0Panel(QWidget):
 
         self.canvas.figure.tight_layout()
         self.canvas.draw()
+        self.canvas.enable_line_hover()
 
     # ------------------------------------------------------------------
     # Helpers

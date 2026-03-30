@@ -182,7 +182,7 @@ class SteppingPanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Stepping Calculator")
         title.setObjectName("heading")
@@ -840,6 +840,7 @@ class SteppingPanel(QWidget):
             el2, result.temperature,
         )
         self.canvas.draw()
+        self.canvas.enable_line_hover()
 
         n_phases = len(result.phase_fractions)
         self.temps_label.setText("")
@@ -936,6 +937,7 @@ class SteppingPanel(QWidget):
             title=f"Phase Fractions: {el1}-{x:.2%}{el2}",
         )
         self.canvas.draw()
+        self.canvas.enable_line_hover()
 
         # --- Solidus / Liquidus display (both K and C) ---
         temps_parts = []

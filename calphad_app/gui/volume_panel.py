@@ -299,7 +299,7 @@ class VolumePanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         # Title
         title = QLabel("Molar Volume & Density")
@@ -635,8 +635,8 @@ class VolumePanel(QWidget):
         x = self.comp_spin.value()
 
         # --- Molar volume plot ---
-        self.vol_figure.clear()
-        ax_vol = self.vol_figure.add_subplot(111)
+        self.vol_canvas.figure.clear()
+        ax_vol = self.vol_canvas.figure.add_subplot(111)
         ax_vol.set_facecolor("#1e1e2e")
 
         if result.has_volume_data and not np.all(np.isnan(result.molar_volumes)):
@@ -678,8 +678,9 @@ class VolumePanel(QWidget):
         for spine in ax_vol.spines.values():
             spine.set_color("#333355")
         ax_vol.grid(True, color="#2a2a4a", alpha=0.5)
-        self.vol_figure.tight_layout()
+        self.vol_canvas.figure.tight_layout()
         self.vol_canvas.draw()
+        self.vol_canvas.enable_line_hover()
 
         # --- Density plot ---
         self.dens_canvas.figure.clear()
@@ -726,6 +727,7 @@ class VolumePanel(QWidget):
         ax_dens.grid(True, color="#2a2a4a", alpha=0.5)
         self.dens_canvas.figure.tight_layout()
         self.dens_canvas.draw()
+        self.dens_canvas.enable_line_hover()
 
         # --- Summary ---
         n_phases = len(result.phase_fractions)
@@ -834,10 +836,10 @@ class VolumePanel(QWidget):
     def _export_png(self):
         # Export whichever tab is currently active
         if self.tab_widget.currentIndex() == 0:
-            figure = self.vol_figure
+            figure = self.vol_canvas.figure
             default_name = "molar_volume.png"
         else:
-            figure = self.dens_figure
+            figure = self.dens_canvas.figure
             default_name = "density.png"
 
         path, _ = QFileDialog.getSaveFileName(

@@ -174,7 +174,7 @@ class EquilibriumPanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Equilibrium Calculator")
         title.setObjectName("heading")
@@ -360,9 +360,9 @@ class EquilibriumPanel(QWidget):
         )
         results_layout.addWidget(self.results_table, stretch=1)
 
-        self.canvas = LazyCanvas(figsize=(5, 3), dpi=100)
+        self.canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.canvas.setMinimumHeight(300)
-        results_layout.addWidget(self.canvas, stretch=1)
+        results_layout.addWidget(self.canvas, stretch=2)
 
         layout.addLayout(results_layout, stretch=1)
 

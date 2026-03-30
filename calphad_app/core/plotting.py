@@ -38,15 +38,15 @@ def _add_celsius_secondary_axis(ax, axis: str = "y") -> None:
             "right",
             functions=(k_to_c, lambda c: c + 273.15),
         )
-        sec.set_ylabel("Temperature (\u00b0C)", color="#aaaacc", fontsize=11)
+        sec.set_ylabel("Temperature (\u00b0C)", color="#ccccee", fontsize=11)
     else:
         sec = ax.secondary_xaxis(
             "top",
             functions=(k_to_c, lambda c: c + 273.15),
         )
-        sec.set_xlabel("Temperature (\u00b0C)", color="#aaaacc", fontsize=11)
+        sec.set_xlabel("Temperature (\u00b0C)", color="#ccccee", fontsize=11)
 
-    sec.tick_params(colors="#aaaacc")
+    sec.tick_params(colors="#ccccee")
     return sec
 
 
@@ -79,21 +79,21 @@ def plot_binary_phase_diagram(
         # Manual fallback: extract data from strategy nodes
         _plot_binary_manual(ax, strategy, el2)
 
-    ax.set_xlabel(f"Mole fraction {el2}", color="white", fontsize=12)
-    ax.set_ylabel("Temperature (K)", color="white", fontsize=12)
+    ax.set_xlabel(f"Mole fraction {el2}", color="white", fontsize=11)
+    ax.set_ylabel("Temperature (K)", color="white", fontsize=11)
 
     # Title with optional subtitle for metadata / conditions
     title_text = f"{el1}-{el2} Phase Diagram"
     if subtitle:
         title_text += f"\n{subtitle}"
-    ax.set_title(title_text, color="white", fontsize=14, fontweight="bold")
+    ax.set_title(title_text, color="white", fontsize=13, fontweight="bold")
 
     ax.set_xlim(0, 1)
     ax.set_ylim(t_min, t_max)
 
     # Weight percent X-axis: relabel ticks to show wt% at correct mole frac positions
     if comp_unit == "weight_percent":
-        ax.set_xlabel(f"Weight percent {el2}", color="white", fontsize=12)
+        ax.set_xlabel(f"Weight percent {el2}", color="white", fontsize=11)
         aw1 = ATOMIC_WEIGHTS.get(el1.upper(), 1.0)
         aw2 = ATOMIC_WEIGHTS.get(el2.upper(), 1.0)
         wt_ticks = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -110,8 +110,8 @@ def plot_binary_phase_diagram(
 
     ax.tick_params(colors="white")
     for spine in ax.spines.values():
-        spine.set_color("#555555")
-    ax.grid(True, alpha=0.2, color="#555555")
+        spine.set_color("#666688")
+    ax.grid(True, alpha=0.4, color="#444466")
 
     # Translate legend labels to friendly phase names and reposition
     handles, labels = ax.get_legend_handles_labels()
@@ -121,17 +121,18 @@ def plot_binary_phase_diagram(
         if len(handles) <= 8:
             leg = ax.legend(handles, short_labels,
                             fontsize=8, loc="best",
-                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                            framealpha=0.9)
         elif len(handles) <= 15:
             leg = ax.legend(handles, short_labels,
                             fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
                             facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                            borderaxespad=0)
+                            framealpha=0.9, borderaxespad=0)
         else:
             leg = ax.legend(handles, short_labels,
                             fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
                             facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                            ncol=1 + len(handles) // 20, borderaxespad=0)
+                            framealpha=0.9, ncol=1 + len(handles) // 20, borderaxespad=0)
 
     # Secondary Celsius axis on the right-hand side
     try:
@@ -153,7 +154,7 @@ def plot_binary_phase_diagram(
             fontsize=7, color="#888888", ha="right", va="bottom",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="#1e1e2e", alpha=0.9))
 
-    fig.tight_layout(rect=[0, 0, 0.88, 1])
+    fig.tight_layout(pad=1.5, rect=[0, 0, 0.88, 1])
 
 
 def _plot_binary_solid_fills(ax, strategy) -> None:
@@ -420,15 +421,16 @@ def _plot_binary_manual(ax, strategy, el2: str) -> None:
     # Smart legend placement
     handles, labels = ax.get_legend_handles_labels()
     if len(handles) <= 8:
-        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           framealpha=0.9)
     elif len(handles) <= 15:
         legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           borderaxespad=0)
+                           framealpha=0.9, borderaxespad=0)
     else:
         legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           ncol=1 + len(handles) // 20, borderaxespad=0)
+                           framealpha=0.9, ncol=1 + len(handles) // 20, borderaxespad=0)
 
 
 def plot_stepping_result(
@@ -473,32 +475,33 @@ def plot_stepping_result(
         ax.axvline(liquidus, color="#FFAB40", linestyle="--", alpha=0.7,
                    label=f"Liquidus ({liquidus:.0f} K / {liq_c:.0f} \u00b0C)")
 
-    ax.set_xlabel("Temperature (K)", color="white", fontsize=12)
-    ax.set_ylabel("Phase Fraction", color="white", fontsize=12)
+    ax.set_xlabel("Temperature (K)", color="white", fontsize=11)
+    ax.set_ylabel("Phase Fraction", color="white", fontsize=11)
 
     title_text = title
     if subtitle:
         title_text += f"\n{subtitle}"
-    ax.set_title(title_text, color="white", fontsize=14, fontweight="bold")
+    ax.set_title(title_text, color="white", fontsize=13, fontweight="bold")
     ax.set_ylim(-0.05, 1.05)
 
     ax.tick_params(colors="white")
     for spine in ax.spines.values():
-        spine.set_color("#555555")
-    ax.grid(True, alpha=0.2, color="#555555")
+        spine.set_color("#666688")
+    ax.grid(True, alpha=0.4, color="#444466")
 
     # Smart legend placement
     handles, labels = ax.get_legend_handles_labels()
     if len(handles) <= 8:
-        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           framealpha=0.9)
     elif len(handles) <= 15:
         legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           borderaxespad=0)
+                           framealpha=0.9, borderaxespad=0)
     else:
         legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           ncol=1 + len(handles) // 20, borderaxespad=0)
+                           framealpha=0.9, ncol=1 + len(handles) // 20, borderaxespad=0)
 
     # Secondary Celsius axis on the top
     try:
@@ -506,7 +509,7 @@ def plot_stepping_result(
     except Exception:
         pass  # Primary axis still works; skip secondary if it fails
 
-    fig.tight_layout()
+    fig.tight_layout(pad=1.5)
 
 
 def plot_equilibrium_bar(
@@ -532,7 +535,7 @@ def plot_equilibrium_bar(
     if not phases:
         ax.text(0.5, 0.5, "No stable phases found", ha="center", va="center",
                 color="white", fontsize=14, transform=ax.transAxes)
-        fig.tight_layout()
+        fig.tight_layout(pad=1.5)
         return
 
     # Translate phase names for display
@@ -544,14 +547,14 @@ def plot_equilibrium_bar(
     bars = ax.barh(y_pos, fractions, color=colors, edgecolor="#333333", height=0.5)
     ax.set_yticks(y_pos)
     ax.set_yticklabels(friendly_phases, color="white", fontsize=11)
-    ax.set_xlabel("Phase Fraction", color="white", fontsize=12)
+    ax.set_xlabel("Phase Fraction", color="white", fontsize=11)
 
     # Title with temperature in both K and C
     temp_c = k_to_c(temperature)
     title_text = f"Equilibrium at {temperature:.0f} K ({temp_c:.0f} \u00b0C)"
     if subtitle:
         title_text += f"\n{subtitle}"
-    ax.set_title(title_text, color="white", fontsize=14, fontweight="bold")
+    ax.set_title(title_text, color="white", fontsize=13, fontweight="bold")
     ax.set_xlim(0, 1.05)
 
     for bar, frac in zip(bars, fractions):
@@ -560,95 +563,161 @@ def plot_equilibrium_bar(
 
     ax.tick_params(colors="white")
     for spine in ax.spines.values():
-        spine.set_color("#555555")
-    ax.grid(True, alpha=0.2, color="#555555", axis="x")
+        spine.set_color("#666688")
+    ax.grid(True, alpha=0.4, color="#444466", axis="x")
 
-    fig.tight_layout()
+    fig.tight_layout(pad=1.5)
 
 
-def _add_ternary_annotations(ax, el1: str, el2: str, el3: str) -> None:
-    """Add vertex labels, third-edge ticks, and gridlines to a triangular axes.
+def _smooth_boundary(xdata, ydata, n_out=200):
+    """Apply cubic spline interpolation to smooth a phase boundary curve.
 
-    The pycalphad TriangularAxes maps data coordinates as:
-        Bottom-left  (0, 0) = 100% el1 (the dependent component)
-        Bottom-right (1, 0) = 100% el2 (x-axis component)
-        Top apex     (0, 1) = 100% el3 (y-axis component)
-
-    The affine transform converts (data_x, data_y) to display via:
-        cart_x = data_x + 0.5 * data_y
-        cart_y = data_y * sqrt(3) / 2
-
-    So the triangle corners in *display* coords are:
-        (0, 0), (1, 0), (0.5, sqrt(3)/2)
+    Uses parametric spline fitting so the curve stays faithful to the
+    original trajectory.  Falls back to the raw data if there are too
+    few points or the spline fails (e.g. near invariant kinks).
     """
-    import numpy as np
+    from scipy.interpolate import make_interp_spline
+
+    n = len(xdata)
+    if n < 4:
+        return xdata, ydata
+
+    # Parametric variable based on cumulative arc-length
+    dx = np.diff(xdata)
+    dy = np.diff(ydata)
+    dist = np.sqrt(dx**2 + dy**2)
+    dist[dist == 0] = 1e-12  # avoid zero-length segments
+    t_param = np.concatenate(([0], np.cumsum(dist)))
+    t_param /= t_param[-1]  # normalize to [0, 1]
+
+    try:
+        k = min(3, n - 1)  # spline order (cubic if enough points)
+        t_fine = np.linspace(0, 1, max(n_out, n * 3))
+        x_smooth = make_interp_spline(t_param, xdata, k=k)(t_fine)
+        y_smooth = make_interp_spline(t_param, ydata, k=k)(t_fine)
+        return x_smooth, y_smooth
+    except Exception:
+        return xdata, ydata
+
+
+def _extract_and_replot_on_ternary(ax_ternary, strategy, el1: str, el2: str, el3: str) -> None:
+    """Extract phase boundary data from pycalphad and re-plot on mpltern axes.
+
+    Renders into a temporary pycalphad TriangularAxes, then extracts all
+    Line2D and LineCollection artists, applies spline smoothing to the
+    phase boundary curves, and re-plots them in mpltern's (t, l, r)
+    coordinate system.
+
+    Coordinate mapping (pycalphad -> mpltern):
+        pycalphad data_x = X(el2)  ->  r (right vertex)
+        pycalphad data_y = X(el3)  ->  t (top vertex)
+        dependent 1-x-y  = X(el1)  ->  l (left vertex)
+    """
+    from pycalphad import variables as v_mod
+    from matplotlib.lines import Line2D
     from matplotlib.collections import LineCollection
 
-    sqrt3_2 = np.sqrt(3) / 2.0
+    # Step 1: Render into a hidden pycalphad triangular axes
+    tmp_fig = Figure(figsize=(1, 1))
+    try:
+        import pycalphad.plot.triangular  # noqa: F401
+        tmp_ax = tmp_fig.add_subplot(111, projection="triangular")
+    except Exception:
+        tmp_ax = tmp_fig.add_subplot(111)
 
-    # --- Vertex labels (pure-component corners) ---
-    # Bottom-left = 100% el1, bottom-right = 100% el2, top = 100% el3
-    # Use the axes transData to convert; the triangular projection's
-    # transData already includes the shear, so we place in data coords.
-    # Data (0,0) -> bottom-left, data (1,0) -> bottom-right, data (0,1) -> top
-    ax.text(0.0, -0.06, el1, transform=ax.transData,
-            ha="center", va="top", color="#4FC3F7", fontsize=13, fontweight="bold")
-    ax.text(1.0, -0.06, el2, transform=ax.transData,
-            ha="center", va="top", color="#81C784", fontsize=13, fontweight="bold")
-    ax.text(0.0, 1.06, el3, transform=ax.transData,
-            ha="center", va="bottom", color="#FFB74D", fontsize=13, fontweight="bold")
+    from pycalphad.mapping.plotting import plot_ternary as _pc_plot
+    _pc_plot(strategy, ax=tmp_ax, x=v_mod.X(el2.upper()), y=v_mod.X(el3.upper()))
 
-    # --- Third-edge (hypotenuse / right side) tick marks & labels ---
-    # The right edge runs from data (1, 0) [100% el2] to data (0, 1) [100% el3].
-    # Along this edge, el1 = 0 everywhere.  We label with the el3 fraction
-    # (= y in data coords) which goes from 0 at bottom-right to 1 at top.
-    tick_len = 0.02
-    for i in range(1, 10):
-        frac = i / 10.0
-        # Point on the hypotenuse: x = 1-frac, y = frac
-        px, py = 1.0 - frac, frac
-        # Outward normal direction for the hypotenuse (pointing right)
-        nx, ny = 1.0, 1.0
-        norm = np.sqrt(nx**2 + ny**2)
-        nx, ny = nx / norm, ny / norm
-        # Tick end point (in data coords)
-        tx, ty = px + tick_len * nx, py + tick_len * ny
-        # Draw tick line
-        ax.plot([px, tx], [py, ty], color="#555555", linewidth=0.8,
-                clip_on=False, transform=ax.transData)
-        # Label with el3 fraction (= y = frac along hypotenuse)
-        lx, ly = px + 4.0 * tick_len * nx, py + 4.0 * tick_len * ny
-        ax.text(lx, ly, f"{frac:.1f}", transform=ax.transData,
-                ha="center", va="center", color="#aaaacc", fontsize=7,
-                rotation=-60, clip_on=False)
+    # Step 2: Extract legend to build a color->phase map
+    # pycalphad uses Rectangle patches in the legend (not Line2D)
+    color_to_phase = {}
+    legend = tmp_ax.get_legend()
+    if legend:
+        from matplotlib.patches import Rectangle
+        for handle, text in zip(legend.legend_handles, legend.get_texts()):
+            phase_name = text.get_text()
+            if isinstance(handle, Rectangle):
+                r, g, b, a = handle.get_facecolor()
+                hex_color = "#{:02X}{:02X}{:02X}".format(
+                    int(r * 255), int(g * 255), int(b * 255))
+                color_to_phase[hex_color] = phase_name
+            elif isinstance(handle, Line2D):
+                color_to_phase[handle.get_color().upper()] = phase_name
 
-    # --- Internal gridlines (3 directions) ---
-    grid_segs = []
-    grid_color = "#333355"
-    for i in range(1, 10):
-        frac = i / 10.0
-        # Lines of constant el2 (x = const): vertical in data space
-        # From (frac, 0) to (frac, 1-frac)
-        grid_segs.append([(frac, 0.0), (frac, 1.0 - frac)])
-        # Lines of constant el3 (y = const): horizontal in data space
-        # From (0, frac) to (1-frac, frac)
-        grid_segs.append([(0.0, frac), (1.0 - frac, frac)])
-        # Lines of constant el1 (x + y = const): diagonal
-        # x + y = frac, from (frac, 0) to (0, frac)
-        grid_segs.append([(frac, 0.0), (0.0, frac)])
+    # Step 3: Extract all Line2D artists (phase boundary curves)
+    plotted_labels = set()
+    for child in tmp_ax.get_children():
+        if not isinstance(child, Line2D):
+            continue
+        xdata = np.asarray(child.get_xdata(), dtype=float)
+        ydata = np.asarray(child.get_ydata(), dtype=float)
+        if len(xdata) < 2:
+            continue
+        color = child.get_color()
+        lw = child.get_linewidth()
 
-    lc = LineCollection(grid_segs, colors=grid_color, linewidths=0.4,
-                        linestyles=":", transform=ax.transData, zorder=0)
-    ax.add_collection(lc)
+        # Smooth the boundary curve with cubic spline interpolation
+        xdata, ydata = _smooth_boundary(xdata, ydata)
 
-    # --- Axis-edge labels (composition meaning) ---
-    # Bottom edge: X(el2) increasing left to right
-    ax.text(0.5, -0.15, f"X({el2}) \u2192", transform=ax.transData,
-            ha="center", va="top", color="#81C784", fontsize=10)
-    # Left edge: X(el3) increasing bottom to top
-    ax.text(-0.12, 0.5, f"\u2191 X({el3})", transform=ax.transData,
-            ha="center", va="center", color="#FFB74D", fontsize=10,
-            rotation=60)
+        # Convert: pycalphad (data_x=X_el2, data_y=X_el3) -> mpltern (t, l, r)
+        r_vals = xdata          # X(el2) = right vertex
+        t_vals = ydata          # X(el3) = top vertex
+        l_vals = 1.0 - xdata - ydata  # X(el1) = left vertex
+
+        # Clip to valid simplex region
+        mask = (l_vals >= -0.02) & (r_vals >= -0.02) & (t_vals >= -0.02)
+        t_c = np.clip(t_vals[mask], 0, 1)
+        l_c = np.clip(l_vals[mask], 0, 1)
+        r_c = np.clip(r_vals[mask], 0, 1)
+
+        if len(t_c) < 2:
+            continue
+
+        # Renormalize to stay exactly on the simplex (t + l + r = 1)
+        total = t_c + l_c + r_c
+        total[total == 0] = 1.0
+        t_c /= total
+        l_c /= total
+        r_c /= total
+
+        # Get phase label from color lookup (normalize to uppercase hex)
+        hex_c = color.upper() if isinstance(color, str) else ""
+        label = color_to_phase.get(hex_c, "")
+        if label in plotted_labels:
+            label = ""
+        elif label:
+            plotted_labels.add(label)
+
+        ax_ternary.plot(t_c, l_c, r_c, color=color, linewidth=lw,
+                        label=label or None, zorder=3)
+
+    # Step 4: Extract LineCollection artists (tielines)
+    for child in tmp_ax.get_children():
+        if not isinstance(child, LineCollection):
+            continue
+        segs = child.get_segments()
+        colors = child.get_colors()
+        lws = child.get_linewidths()
+        seg_color = tuple(colors[0]) if len(colors) > 0 else (0, 1, 0, 1)
+        seg_lw = float(lws[0]) if len(lws) > 0 else 0.5
+
+        for seg in segs:
+            if len(seg) < 2:
+                continue
+            seg = np.asarray(seg)
+            x_el2 = seg[:, 0]
+            x_el3 = seg[:, 1]
+            x_el1 = 1.0 - x_el2 - x_el3
+
+            t_c = np.clip(x_el3, 0, 1)
+            l_c = np.clip(x_el1, 0, 1)
+            r_c = np.clip(x_el2, 0, 1)
+
+            ax_ternary.plot(t_c, l_c, r_c, color=seg_color,
+                            linewidth=seg_lw, zorder=2)
+
+    import matplotlib.pyplot as plt
+    plt.close(tmp_fig)
 
 
 def plot_ternary_isothermal(
@@ -660,84 +729,91 @@ def plot_ternary_isothermal(
     temperature: float,
     subtitle: str | None = None,
 ) -> None:
-    """Plot a ternary isothermal section as a proper Gibbs triangle.
+    """Plot a ternary isothermal section as a proper 3-axis Gibbs triangle.
 
-    Uses pycalphad's TriangularAxes projection for correct barycentric
-    coordinate display with all three edges labeled, vertex labels,
-    gridlines in three directions, and tick marks on the dependent edge.
+    Uses mpltern for publication-quality rendering with tick marks,
+    labels, and gridlines on ALL THREE edges of the triangle.
+
+    Vertex mapping:
+        Top    (t) = el3
+        Left   (l) = el1  (dependent component)
+        Right  (r) = el2
     """
-    from pycalphad import variables as v_mod
+    import mpltern  # noqa: F401  -- registers 'ternary' projection
 
     fig.clear()
     fig.patch.set_facecolor("#1e1e2e")
 
-    # Register the triangular projection and create triangular axes
-    try:
-        import pycalphad.plot.triangular  # noqa: F401  -- registers projection
-        ax = fig.add_subplot(111, projection="triangular")
-    except Exception:
-        ax = fig.add_subplot(111)
-
+    ax = fig.add_subplot(111, projection="ternary")
     ax.set_facecolor("#1e1e2e")
 
-    # Plot phase data from pycalphad strategy
+    # Extract data from pycalphad and plot on mpltern axes
     try:
-        from pycalphad.mapping.plotting import plot_ternary
-        plot_ternary(
-            strategy, ax=ax,
-            x=v_mod.X(el2.upper()),
-            y=v_mod.X(el3.upper()),
-        )
+        _extract_and_replot_on_ternary(ax, strategy, el1, el2, el3)
     except Exception as exc:
         import traceback
         traceback.print_exc()
-        ax.text(0.5, 0.5,
-                f"Could not render ternary diagram.\nTry a different temperature.\n\n"
+        ax.text(0.33, 0.34, 0.33,
+                f"Could not render ternary diagram.\n"
+                f"Try a different temperature.\n\n"
                 f"Error: {str(exc)[:120]}",
-                ha="center", va="center", color="#E57373", fontsize=11,
-                transform=ax.transAxes)
+                ha="center", va="center", color="#E57373", fontsize=11)
 
-    # Force correct limits (pycalphad's plot_binary calls autoscale which
-    # can override the triangular axes' hard-coded [0,1] limits)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
+    # --- Axis labels on all 3 edges ---
+    ax.set_tlabel(f"X({el3})", fontsize=11, fontweight="bold")
+    ax.set_llabel(f"X({el1})", fontsize=11, fontweight="bold")
+    ax.set_rlabel(f"X({el2})", fontsize=11, fontweight="bold")
 
-    # Remove pycalphad's default title / axis labels (we add our own)
-    ax.set_title("")
-    ax.set_xlabel("")
-    ax.set_ylabel("")
+    # Label colors
+    ax.taxis.label.set_color("#FFB74D")
+    ax.laxis.label.set_color("#4FC3F7")
+    ax.raxis.label.set_color("#81C784")
 
-    # Add proper ternary annotations: vertex labels, 3rd-edge ticks, gridlines
-    _add_ternary_annotations(ax, el1, el2, el3)
+    # --- Gridlines in all 3 directions ---
+    ax.grid(True, linestyle=":", linewidth=0.4, color="#444466", alpha=0.7)
 
-    # Title
+    # --- Tick styling on all 3 axes ---
+    for axis_obj in (ax.taxis, ax.laxis, ax.raxis):
+        axis_obj.set_tick_params(labelcolor="#ccccee", color="#555555", labelsize=8)
+
+    # --- Spine (edge) styling ---
+    for spine_name in ("tside", "lside", "rside"):
+        spine = ax.spines.get(spine_name)
+        if spine:
+            spine.set_color("#888899")
+            spine.set_linewidth(1.4)
+    for spine_name in ("tcorner", "lcorner", "rcorner"):
+        spine = ax.spines.get(spine_name)
+        if spine:
+            spine.set_color("#888899")
+            spine.set_linewidth(1.4)
+
+    # --- Title ---
     ax.set_title(
         f"{el1}\u2013{el2}\u2013{el3}  Isothermal Section\n"
         f"{temperature:.0f} K  ({k_to_c(temperature):.0f} \u00b0C)",
-        color="white", fontsize=13, fontweight="bold", pad=20,
+        color="white", fontsize=13, fontweight="bold", pad=18,
     )
 
-    # Style spines (all 3 triangle edges) for dark theme
-    for spine in ax.spines.values():
-        spine.set_color("#555555")
-        spine.set_linewidth(1.2)
-
-    # Style existing tick labels (bottom and left edges)
-    ax.tick_params(axis="both", colors="#aaaacc", labelsize=8)
-
-    # Style legend (placed by pycalphad's plot_binary)
-    legend = ax.get_legend()
-    if legend:
+    # --- Legend (to the right of the triangle) ---
+    handles, labels = ax.get_legend_handles_labels()
+    fig.subplots_adjust(left=0.05, right=0.72, top=0.88, bottom=0.05)
+    if handles:
+        friendly_labels = [translate_phase_short(lbl) for lbl in labels]
+        legend = ax.legend(
+            handles, friendly_labels,
+            loc="center left",
+            bbox_to_anchor=(1.05, 0.5),
+            bbox_transform=ax.transAxes,
+            fontsize=7, framealpha=0.9,
+        )
         legend.get_frame().set_facecolor("#2d2d3e")
         legend.get_frame().set_edgecolor("#555555")
-        legend.get_frame().set_alpha(0.9)
         for text in legend.get_texts():
             text.set_color("white")
 
     if subtitle:
-        fig.text(0.5, 0.01, subtitle, ha="center", color="#888888", fontsize=9)
-
-    fig.subplots_adjust(left=0.12, right=0.78, top=0.86, bottom=0.14)
+        fig.text(0.5, 0.005, subtitle, ha="center", color="#888888", fontsize=9)
 
 
 def plot_composition_stepping(
@@ -767,36 +843,37 @@ def plot_composition_stepping(
         )
 
     x_label = f"Weight percent {varied_el}" if comp_unit == "weight_percent" else f"Mole fraction {varied_el}"
-    ax.set_xlabel(x_label, color="white", fontsize=12)
-    ax.set_ylabel("Phase Fraction", color="white", fontsize=12)
+    ax.set_xlabel(x_label, color="white", fontsize=11)
+    ax.set_ylabel("Phase Fraction", color="white", fontsize=11)
 
     temp_c = k_to_c(temperature)
     title_text = f"Phase Fractions vs Composition at {temperature:.0f} K ({temp_c:.0f} \u00b0C)"
     if subtitle:
         title_text += f"\n{subtitle}"
-    ax.set_title(title_text, color="white", fontsize=14, fontweight="bold")
+    ax.set_title(title_text, color="white", fontsize=13, fontweight="bold")
     ax.set_ylim(-0.05, 1.05)
     ax.set_xlim(compositions[0], compositions[-1])
 
     ax.tick_params(colors="white")
     for spine in ax.spines.values():
-        spine.set_color("#555555")
-    ax.grid(True, alpha=0.2, color="#555555")
+        spine.set_color("#666688")
+    ax.grid(True, alpha=0.4, color="#444466")
 
     # Smart legend placement
     handles, labels = ax.get_legend_handles_labels()
     if len(handles) <= 8:
-        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white")
+        legend = ax.legend(fontsize=8, loc="best", facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
+                           framealpha=0.9)
     elif len(handles) <= 15:
         legend = ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           borderaxespad=0)
+                           framealpha=0.9, borderaxespad=0)
     else:
         legend = ax.legend(fontsize=6, loc="center left", bbox_to_anchor=(1.02, 0.5),
                            facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white",
-                           ncol=1 + len(handles) // 20, borderaxespad=0)
+                           framealpha=0.9, ncol=1 + len(handles) // 20, borderaxespad=0)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=1.5)
 
 
 def plot_isopleth(
@@ -827,17 +904,17 @@ def plot_isopleth(
                 ha="center", va="center", color="#E57373", fontsize=11,
                 transform=ax.transAxes)
 
-    ax.set_xlabel(f"Mole fraction {varied_el}", color="white", fontsize=12)
-    ax.set_ylabel("Temperature (K)", color="white", fontsize=12)
+    ax.set_xlabel(f"Mole fraction {varied_el}", color="white", fontsize=11)
+    ax.set_ylabel("Temperature (K)", color="white", fontsize=11)
     ax.set_title(
         f"Isopleth: {fixed_el} fixed at {fixed_comp:.2f}",
-        color="white", fontsize=14, fontweight="bold",
+        color="white", fontsize=13, fontweight="bold",
     )
     ax.set_ylim(t_min, t_max)
     ax.tick_params(colors="white")
     for spine in ax.spines.values():
-        spine.set_color("#555555")
-    ax.grid(True, alpha=0.2, color="#555555")
+        spine.set_color("#666688")
+    ax.grid(True, alpha=0.4, color="#444466")
 
     try:
         _add_celsius_secondary_axis(ax, axis="y")
@@ -846,9 +923,11 @@ def plot_isopleth(
 
     if ax.get_legend():
         ax.get_legend().get_frame().set_facecolor("#2d2d3e")
+        ax.get_legend().get_frame().set_edgecolor("#555555")
+        ax.get_legend().get_frame().set_alpha(0.9)
         for text in ax.get_legend().get_texts():
             text.set_color("white")
 
     if subtitle:
         fig.text(0.5, 0.01, subtitle, ha="center", color="#888888", fontsize=9)
-    fig.tight_layout()
+    fig.tight_layout(pad=1.5)

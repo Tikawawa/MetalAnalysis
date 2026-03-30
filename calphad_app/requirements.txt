@@ -2,6 +2,7 @@ PyQt6==6.7.1
 pycalphad==0.11.0
 scheil>=0.3.0
 matplotlib==3.9.2
+mpltern>=1.0.4
 numpy==1.26.4
 pandas==2.2.2
 pyinstaller==6.10.0

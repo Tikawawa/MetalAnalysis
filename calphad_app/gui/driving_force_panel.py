@@ -342,7 +342,7 @@ class DrivingForcePanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Driving Force Analysis")
         title.setObjectName("heading")
@@ -581,7 +581,7 @@ class DrivingForcePanel(QWidget):
         )
         self.splitter.addWidget(self.results_table)
 
-        self.canvas = LazyCanvas(figsize=(6, 4), dpi=100)
+        self.canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.canvas.setMinimumHeight(300)
         self.splitter.addWidget(self.canvas)
 
@@ -1311,6 +1311,7 @@ class DrivingForcePanel(QWidget):
         # --- Update chart (line plot) ---
         self._plot_sweep_lines(temperatures, sweep_data, threshold)
         self.canvas.draw()
+        self.canvas.enable_line_hover()
 
         # --- Summary ---
         self._show_sweep_summary(temperatures, sweep_data, threshold)

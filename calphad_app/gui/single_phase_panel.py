@@ -189,7 +189,7 @@ class SinglePhasePanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         # Title
         title = QLabel("Single-Phase Calculator")
@@ -793,6 +793,7 @@ class SinglePhasePanel(QWidget):
 
         self.canvas.figure.tight_layout()
         self.canvas.draw()
+        self.canvas.enable_line_hover()
 
     # -------------------------------------------------------- table
 

@@ -324,7 +324,7 @@ class ThermoPropertiesPanel(QWidget):
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setSpacing(12)
+        layout.setSpacing(6)
 
         title = QLabel("Thermodynamic Properties")
         title.setObjectName("heading")
@@ -1193,16 +1193,17 @@ class ThermoPropertiesPanel(QWidget):
 
         self.props_canvas.figure.tight_layout()
         self.props_canvas.draw()
+        self.props_canvas.enable_line_hover()
 
     def _plot_chemical_potentials(
         self, temps: list[float], mu_results: dict[str, list[float]]
     ) -> None:
-        self.mu_figure.clear()
+        self.mu_canvas.figure.clear()
         if not mu_results:
             self.mu_canvas.draw()
             return
 
-        ax = self.mu_figure.add_subplot(111)
+        ax = self.mu_canvas.figure.add_subplot(111)
         self._configure_axis(ax)
 
         t_arr = np.array(temps)
@@ -1231,8 +1232,9 @@ class ThermoPropertiesPanel(QWidget):
                       facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
 
         self._add_celsius_axis(ax)
-        self.mu_figure.tight_layout()
+        self.mu_canvas.figure.tight_layout()
         self.mu_canvas.draw()
+        self.mu_canvas.enable_line_hover()
 
     # ------------------------------------------------------------------
     # Data table
@@ -1382,10 +1384,10 @@ class ThermoPropertiesPanel(QWidget):
         # Determine which figure to export based on current tab
         current_idx = self.tab_widget.currentIndex()
         if current_idx == 1:
-            figure = self.mu_figure
+            figure = self.mu_canvas.figure
             canvas = self.mu_canvas
         else:
-            figure = self.props_figure
+            figure = self.props_canvas.figure
             canvas = self.props_canvas
 
         conditions = self._build_conditions_text()
