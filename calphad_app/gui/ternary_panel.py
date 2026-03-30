@@ -8,8 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
     QPushButton, QRadioButton, QButtonGroup, QScrollArea, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database
 
 from core.calculations import calculate_ternary_isothermal, calculate_isopleth
@@ -264,9 +263,7 @@ class TernaryPanel(QWidget):
         layout.addWidget(self.summary_label)
 
         # Plot
-        self.figure = Figure(figsize=(8, 6), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(8, 6), dpi=100)
         self.canvas.setMinimumHeight(400)
         layout.addWidget(self.canvas, stretch=1)
 
@@ -421,7 +418,7 @@ class TernaryPanel(QWidget):
         if self._temp_unit == "C":
             temp = c_to_k(temp)
 
-        plot_ternary_isothermal(self.figure, strategy, el1, el2, el3, temp)
+        plot_ternary_isothermal(self.canvas.figure, strategy, el1, el2, el3, temp)
         self.canvas.draw()
         self.export_png_btn.setEnabled(True)
         self.status_label.setText(f"Isothermal section: {el1}-{el2}-{el3} at {format_temp(temp)}")
@@ -470,7 +467,7 @@ class TernaryPanel(QWidget):
             t_min = c_to_k(t_min)
             t_max = c_to_k(t_max)
 
-        plot_isopleth(self.figure, strategy, varied_el, fixed_el, fixed_comp, t_min, t_max)
+        plot_isopleth(self.canvas.figure, strategy, varied_el, fixed_el, fixed_comp, t_min, t_max)
         self.canvas.draw()
         self.export_png_btn.setEnabled(True)
 
@@ -503,5 +500,5 @@ class TernaryPanel(QWidget):
             "PNG Files (*.png);;All Files (*)",
         )
         if path:
-            self.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
+            self.canvas.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
             self.status_label.setText(f"Exported to {path}")

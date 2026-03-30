@@ -8,8 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QSplitter, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database
 
 from core.calculations import calculate_binary_phase_diagram
@@ -211,16 +210,12 @@ class PhaseDiagramPanel(QWidget):
         self.plot_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Main (right-side / only) canvas
-        self.figure = Figure(figsize=(8, 6), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(8, 6), dpi=100)
         self.canvas.setMinimumHeight(400)
         self.canvas.setToolTip(TOOLTIPS["pd_canvas"])
 
         # Compare (left-side) canvas -- hidden by default
-        self.compare_figure = Figure(figsize=(8, 6), dpi=100)
-        self.compare_figure.patch.set_facecolor("#1e1e2e")
-        self.compare_canvas = FigureCanvasQTAgg(self.compare_figure)
+        self.compare_canvas = LazyCanvas(figsize=(8, 6), dpi=100)
         self.compare_canvas.setMinimumHeight(400)
         self.compare_canvas.setVisible(False)
 
@@ -445,7 +440,7 @@ class PhaseDiagramPanel(QWidget):
         # Clear and plot with translated phase names in legend
         self.figure.clear()
         self._hover_annotation = None  # old annotation destroyed by clear()
-        plot_binary_phase_diagram(self.figure, strategy, el1, el2, t_min, t_max,
+        plot_binary_phase_diagram(self.canvas.figure, strategy, el1, el2, t_min, t_max,
                                   comp_unit=self._comp_unit)
         self._apply_phase_name_translations()
         self.canvas.draw()
@@ -676,7 +671,7 @@ class PhaseDiagramPanel(QWidget):
         axes = self.figure.get_axes()
         subtitle_text = None
         if axes:
-            subtitle_text = self.figure.text(
+            subtitle_text = self.canvas.figure.text(
                 0.5, 0.01, subtitle,
                 ha="center", va="bottom",
                 fontsize=8, color="#90A4AE",
@@ -684,7 +679,7 @@ class PhaseDiagramPanel(QWidget):
             )
             self.figure.subplots_adjust(bottom=0.12)
 
-        self.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
+        self.canvas.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
 
         # Remove the subtitle so it doesn't persist on the interactive canvas
         if subtitle_text is not None:
@@ -728,7 +723,7 @@ class PhaseDiagramPanel(QWidget):
                 t_min = self._last_t_min_k
                 t_max = self._last_t_max_k
                 plot_binary_phase_diagram(
-                    self.compare_figure, self._last_strategy,
+                    self.compare_canvas.figure, self._last_strategy,
                     el1, el2, t_min, t_max,
                     comp_unit=self._comp_unit,
                 )

@@ -20,8 +20,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QProgressBar, QPushButton, QScrollArea, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database, calculate, variables as v
 
 from core.presets import translate_phase_short
@@ -390,9 +389,7 @@ class SinglePhasePanel(QWidget):
         layout.addWidget(self.summary_label)
 
         # --- Results: chart + table ---
-        self.figure = Figure(figsize=(7, 4), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(7, 4), dpi=100)
         self.canvas.setMinimumHeight(320)
         layout.addWidget(self.canvas, stretch=2)
 
@@ -961,9 +958,9 @@ class SinglePhasePanel(QWidget):
         prop_label = self.property_combo.currentText()
 
         subtitle = f"{el1}-{el2}, X({el2})={comp_val:.4f}, {prop_label}"
-        self.figure.suptitle(subtitle, fontsize=8, color="#CCCCCC", y=0.02)
+        self.canvas.figure.suptitle(subtitle, fontsize=8, color="#CCCCCC", y=0.02)
         self.canvas.draw()
-        self.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
-        self.figure.suptitle("")
+        self.canvas.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
+        self.canvas.figure.suptitle("")
         self.canvas.draw()
         self.status_label.setText(f"Exported to {path}")

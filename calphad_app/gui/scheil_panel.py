@@ -19,8 +19,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QScrollArea, QTabWidget, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database
 
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
@@ -445,9 +444,7 @@ class ScheilPanel(QWidget):
         self.result_tabs = QTabWidget()
 
         # Tab 1: Solidification Curve
-        self.solidification_fig = Figure(figsize=(8, 5), dpi=100)
-        self.solidification_fig.patch.set_facecolor("#1e1e2e")
-        self.solidification_canvas = FigureCanvasQTAgg(self.solidification_fig)
+        self.solidification_canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.solidification_canvas.setMinimumHeight(350)
         self.result_tabs.addTab(self.solidification_canvas, "Solidification Curve")
 
@@ -463,18 +460,14 @@ class ScheilPanel(QWidget):
         )
         phase_seq_layout.addWidget(self.phase_table)
 
-        self.phase_seq_fig = Figure(figsize=(8, 4), dpi=100)
-        self.phase_seq_fig.patch.set_facecolor("#1e1e2e")
-        self.phase_seq_canvas = FigureCanvasQTAgg(self.phase_seq_fig)
+        self.phase_seq_canvas = LazyCanvas(figsize=(8, 4), dpi=100)
         self.phase_seq_canvas.setMinimumHeight(250)
         phase_seq_layout.addWidget(self.phase_seq_canvas, stretch=1)
 
         self.result_tabs.addTab(phase_seq_widget, "Phase Sequence")
 
         # Tab 3: Microsegregation
-        self.microseg_fig = Figure(figsize=(8, 5), dpi=100)
-        self.microseg_fig.patch.set_facecolor("#1e1e2e")
-        self.microseg_canvas = FigureCanvasQTAgg(self.microseg_fig)
+        self.microseg_canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.microseg_canvas.setMinimumHeight(350)
         self.result_tabs.addTab(self.microseg_canvas, "Microsegregation")
 
@@ -896,8 +889,8 @@ class ScheilPanel(QWidget):
     def _plot_solidification_curve(self, temperatures: list[float],
                                    fraction_solid: list[float]):
         """Plot fraction solid vs temperature."""
-        self.solidification_fig.clear()
-        ax = self.solidification_fig.add_subplot(111)
+        self.solidification_canvas.figure.clear()
+        ax = self.solidification_canvas.figure.add_subplot(111)
         _style_axes(ax, "Fraction Solid", "Temperature (K)",
                      "Scheil Solidification Curve")
 
@@ -918,7 +911,7 @@ class ScheilPanel(QWidget):
         if temperatures:
             ax2.set_ylim(k_to_c(y_min), k_to_c(y_max))
 
-        self.solidification_fig.tight_layout()
+        self.solidification_canvas.figure.tight_layout()
         self.solidification_canvas.draw()
 
     def _fill_phase_sequence(self, temperatures: list[float],
@@ -978,8 +971,8 @@ class ScheilPanel(QWidget):
             self.phase_table.horizontalHeader().setDefaultSectionSize(90)
 
         # --- Stacked area chart ---
-        self.phase_seq_fig.clear()
-        ax = self.phase_seq_fig.add_subplot(111)
+        self.phase_seq_canvas.figure.clear()
+        ax = self.phase_seq_canvas.figure.add_subplot(111)
         _style_axes(ax, "Temperature (K)", "Phase Fraction",
                      "Phase Fractions During Solidification")
 
@@ -1009,14 +1002,14 @@ class ScheilPanel(QWidget):
                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
             ax.set_xlim(max(t_arr), min(t_arr))  # High to low temperature
 
-        self.phase_seq_fig.tight_layout()
+        self.phase_seq_canvas.figure.tight_layout()
         self.phase_seq_canvas.draw()
 
     def _plot_microsegregation(self, fraction_solid: list[float],
                                liquid_comp: dict[str, list[float]]):
         """Plot liquid composition vs fraction solid."""
-        self.microseg_fig.clear()
-        ax = self.microseg_fig.add_subplot(111)
+        self.microseg_canvas.figure.clear()
+        ax = self.microseg_canvas.figure.add_subplot(111)
         _style_axes(ax, "Fraction Solid", "Composition in Liquid",
                      "Microsegregation (Liquid Composition)")
 
@@ -1038,7 +1031,7 @@ class ScheilPanel(QWidget):
                 ax.legend(fontsize=7, loc="center left", bbox_to_anchor=(1.02, 0.5),
                           facecolor="#2d2d3e", edgecolor="#555555", labelcolor="white", borderaxespad=0)
 
-        self.microseg_fig.tight_layout()
+        self.microseg_canvas.figure.tight_layout()
         self.microseg_canvas.draw()
 
     @staticmethod
@@ -1185,9 +1178,9 @@ class ScheilPanel(QWidget):
         # Determine which figure is currently visible
         current_idx = self.result_tabs.currentIndex()
         fig_map = {
-            0: self.solidification_fig,
-            1: self.phase_seq_fig,
-            2: self.microseg_fig,
+            0: self.solidification_canvas.figure,
+            1: self.phase_seq_canvas.figure,
+            2: self.microseg_canvas.figure,
         }
         fig = fig_map.get(current_idx)
         if fig is None:

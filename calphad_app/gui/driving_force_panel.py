@@ -19,8 +19,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QScrollArea, QSplitter, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database, equilibrium, calculate, variables as v
 
 from core.presets import translate_phase_short, translate_phase_name, ATOMIC_WEIGHTS
@@ -578,9 +577,7 @@ class DrivingForcePanel(QWidget):
         )
         self.splitter.addWidget(self.results_table)
 
-        self.figure = Figure(figsize=(6, 4), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(6, 4), dpi=100)
         self.canvas.setMinimumHeight(300)
         self.splitter.addWidget(self.canvas)
 
@@ -1600,7 +1597,7 @@ class DrivingForcePanel(QWidget):
         conditions = ", ".join(comp_parts)
         subtitle = f"P = {self.pressure_spin.value():.0f} Pa  |  {conditions}"
 
-        annotation = self.figure.text(
+        annotation = self.canvas.figure.text(
             0.01, 0.01, subtitle,
             fontsize=7, color="#888888",
             transform=self.figure.transFigure,
@@ -1608,7 +1605,7 @@ class DrivingForcePanel(QWidget):
         )
 
         try:
-            self.figure.savefig(
+            self.canvas.figure.savefig(
                 path, dpi=150, facecolor="#1e1e2e", bbox_inches="tight",
             )
             self.status_label.setText(f"Exported to {path}")

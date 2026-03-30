@@ -14,8 +14,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QRadioButton, QScrollArea, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database
 
 from core.calculations import EquilibriumResult, calculate_equilibrium_point
@@ -357,9 +356,7 @@ class EquilibriumPanel(QWidget):
         )
         results_layout.addWidget(self.results_table, stretch=1)
 
-        self.figure = Figure(figsize=(5, 3), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(5, 3), dpi=100)
         self.canvas.setMinimumHeight(300)
         results_layout.addWidget(self.canvas, stretch=1)
 
@@ -871,7 +868,7 @@ class EquilibriumPanel(QWidget):
 
         # --- Update chart ---
         plot_equilibrium_bar(
-            self.figure, result.phases, result.fractions, result.temperature
+            self.canvas.figure, result.phases, result.fractions, result.temperature
         )
         self.canvas.draw()
 
@@ -1031,10 +1028,10 @@ class EquilibriumPanel(QWidget):
                 subtitle += "  |  " + ", ".join(comp_parts)
 
             # Re-render figure with subtitle for export
-            self.figure.suptitle(subtitle, fontsize=8, color="#CCCCCC", y=0.02)
+            self.canvas.figure.suptitle(subtitle, fontsize=8, color="#CCCCCC", y=0.02)
             self.canvas.draw()
-            self.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
+            self.canvas.figure.savefig(path, dpi=150, facecolor="#1e1e2e")
             # Remove subtitle after export so it doesn't clutter the UI
-            self.figure.suptitle("")
+            self.canvas.figure.suptitle("")
             self.canvas.draw()
             self.status_label.setText(f"Exported to {path}")

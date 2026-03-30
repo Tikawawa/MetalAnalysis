@@ -737,8 +737,19 @@ class MainWindow(QMainWindow):
         return panel
 
     def _on_tab_changed(self, index: int):
-        # Show a "Did you know?" fact when switching tabs
-        if self._learning_mode and index > 0:
+        # Debounce rapid tab switching to prevent matplotlib/PyQt6 rendering crash.
+        # When tabs switch faster than Qt can paint the canvases, a segfault occurs.
+        # This delays actual tab processing by 50ms so only the final tab is rendered.
+        if not hasattr(self, '_tab_debounce_timer'):
+            self._tab_debounce_timer = QTimer(self)
+            self._tab_debounce_timer.setSingleShot(True)
+            self._tab_debounce_timer.timeout.connect(self._process_tab_change)
+        self._pending_tab_index = index
+        self._tab_debounce_timer.start(50)
+
+    def _process_tab_change(self):
+        index = getattr(self, '_pending_tab_index', 0)
+        if hasattr(self, '_learning_mode') and self._learning_mode and index > 0:
             self._rotate_did_you_know()
 
     def _on_database_loaded(self, db, elements, phases):

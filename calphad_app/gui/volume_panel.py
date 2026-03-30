@@ -19,8 +19,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
     QPushButton, QScrollArea, QTabWidget, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database, Model, equilibrium, variables as v
 
 from core.units import k_to_c, c_to_k, format_temp
@@ -466,16 +465,12 @@ class VolumePanel(QWidget):
         self.tab_widget = QTabWidget()
 
         # Molar Volume tab
-        self.vol_figure = Figure(figsize=(8, 4), dpi=100)
-        self.vol_figure.patch.set_facecolor("#1e1e2e")
-        self.vol_canvas = FigureCanvasQTAgg(self.vol_figure)
+        self.vol_canvas = LazyCanvas(figsize=(8, 4), dpi=100)
         self.vol_canvas.setMinimumHeight(350)
         self.tab_widget.addTab(self.vol_canvas, "Molar Volume")
 
         # Density tab
-        self.dens_figure = Figure(figsize=(8, 4), dpi=100)
-        self.dens_figure.patch.set_facecolor("#1e1e2e")
-        self.dens_canvas = FigureCanvasQTAgg(self.dens_figure)
+        self.dens_canvas = LazyCanvas(figsize=(8, 4), dpi=100)
         self.dens_canvas.setMinimumHeight(350)
         self.tab_widget.addTab(self.dens_canvas, "Density")
 
@@ -683,8 +678,8 @@ class VolumePanel(QWidget):
         self.vol_canvas.draw()
 
         # --- Density plot ---
-        self.dens_figure.clear()
-        ax_dens = self.dens_figure.add_subplot(111)
+        self.dens_canvas.figure.clear()
+        ax_dens = self.dens_canvas.figure.add_subplot(111)
         ax_dens.set_facecolor("#1e1e2e")
 
         if result.has_volume_data and not np.all(np.isnan(result.densities)):
@@ -725,7 +720,7 @@ class VolumePanel(QWidget):
         for spine in ax_dens.spines.values():
             spine.set_color("#333355")
         ax_dens.grid(True, color="#2a2a4a", alpha=0.5)
-        self.dens_figure.tight_layout()
+        self.dens_canvas.figure.tight_layout()
         self.dens_canvas.draw()
 
         # --- Summary ---

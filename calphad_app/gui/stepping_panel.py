@@ -10,8 +10,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QProgressBar,
     QPushButton, QRadioButton, QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database
 
 from core.calculations import SteppingResult, calculate_stepping, CompositionSteppingResult, calculate_composition_stepping
@@ -446,9 +445,7 @@ class SteppingPanel(QWidget):
         layout.addWidget(self.sanity_label)
 
         # --- Plot ---
-        self.figure = Figure(figsize=(8, 5), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.canvas.setMinimumHeight(400)
         layout.addWidget(self.canvas, stretch=1)
 
@@ -835,7 +832,7 @@ class SteppingPanel(QWidget):
             translated_fracs[label] = fracs
 
         plot_composition_stepping(
-            self.figure, result.compositions, translated_fracs,
+            self.canvas.figure, result.compositions, translated_fracs,
             el2, result.temperature,
         )
         self.canvas.draw()
@@ -927,7 +924,7 @@ class SteppingPanel(QWidget):
             translated_fractions[label] = fracs
 
         plot_stepping_result(
-            self.figure,
+            self.canvas.figure,
             result.temperatures,
             translated_fractions,
             result.solidus,
@@ -1079,7 +1076,7 @@ class SteppingPanel(QWidget):
 
         # Add metadata annotation to the figure before saving
         conditions = self._build_conditions_text()
-        annotation = self.figure.text(
+        annotation = self.canvas.figure.text(
             0.01, 0.01, conditions,
             fontsize=7, color="#888888",
             transform=self.figure.transFigure,
@@ -1087,7 +1084,7 @@ class SteppingPanel(QWidget):
         )
 
         try:
-            self.figure.savefig(
+            self.canvas.figure.savefig(
                 path, dpi=150, facecolor="#1e1e2e",
                 bbox_inches="tight",
             )

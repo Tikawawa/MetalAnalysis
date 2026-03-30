@@ -16,6 +16,11 @@ from gui.main_window import MainWindow
 
 
 def main():
+    # Force software OpenGL to prevent segfault from matplotlib canvas
+    # rendering conflicts during rapid tab switching (PyQt6 + GPU issue)
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+
     app = QApplication(sys.argv)
     app.setApplicationName("CalcPHAD")
     app.setOrganizationName("MetalAnalysis")

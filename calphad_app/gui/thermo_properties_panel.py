@@ -16,8 +16,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QScrollArea, QTabWidget, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database, equilibrium, variables as v
 
 from core.units import k_to_c, c_to_k, format_temp, mole_to_weight, weight_to_mole
@@ -543,16 +542,12 @@ class ThermoPropertiesPanel(QWidget):
         self.tab_widget = QTabWidget()
 
         # Tab 1: Property Curves
-        self.props_figure = Figure(figsize=(8, 5), dpi=100)
-        self.props_figure.patch.set_facecolor("#1e1e2e")
-        self.props_canvas = FigureCanvasQTAgg(self.props_figure)
+        self.props_canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.props_canvas.setMinimumHeight(350)
         self.tab_widget.addTab(self.props_canvas, "Property Curves")
 
         # Tab 2: Chemical Potentials
-        self.mu_figure = Figure(figsize=(8, 5), dpi=100)
-        self.mu_figure.patch.set_facecolor("#1e1e2e")
-        self.mu_canvas = FigureCanvasQTAgg(self.mu_figure)
+        self.mu_canvas = LazyCanvas(figsize=(8, 5), dpi=100)
         self.mu_canvas.setMinimumHeight(350)
         self.tab_widget.addTab(self.mu_canvas, "Chemical Potentials")
 
@@ -1108,7 +1103,7 @@ class ThermoPropertiesPanel(QWidget):
     def _plot_property_curves(
         self, temps: list[float], results: dict[str, list[float]]
     ) -> None:
-        self.props_figure.clear()
+        self.props_canvas.figure.clear()
         if not results:
             self.props_canvas.draw()
             return
@@ -1121,7 +1116,7 @@ class ThermoPropertiesPanel(QWidget):
         left_props = [p for p in ("GM", "HM") if p in results]
         right_props = [p for p in ("SM", "CPM") if p in results]
 
-        ax_left = self.props_figure.add_subplot(111)
+        ax_left = self.props_canvas.figure.add_subplot(111)
         self._configure_axis(ax_left)
         ax_left.set_xlabel("Temperature (K)", fontsize=10)
 
@@ -1192,7 +1187,7 @@ class ThermoPropertiesPanel(QWidget):
         # Add Celsius axis on top
         self._add_celsius_axis(ax_left)
 
-        self.props_figure.tight_layout()
+        self.props_canvas.figure.tight_layout()
         self.props_canvas.draw()
 
     def _plot_chemical_potentials(

@@ -18,8 +18,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QRadioButton, QScrollArea, QSplitter,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
+from gui.lazy_canvas import LazyCanvas
 from pycalphad import Database, calculate, variables as v
 
 from core.presets import translate_phase_short
@@ -601,9 +600,7 @@ class T0Panel(QWidget):
         self.results_splitter.addWidget(self.results_table)
 
         # Plot
-        self.figure = Figure(figsize=(6, 4), dpi=100)
-        self.figure.patch.set_facecolor("#1e1e2e")
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = LazyCanvas(figsize=(6, 4), dpi=100)
         self.canvas.setMinimumHeight(350)
         self.results_splitter.addWidget(self.canvas)
 
@@ -1174,7 +1171,7 @@ class T0Panel(QWidget):
             return
 
         conditions = self._build_conditions_text()
-        annotation = self.figure.text(
+        annotation = self.canvas.figure.text(
             0.01, 0.01, conditions,
             fontsize=7, color="#888888",
             transform=self.figure.transFigure,
@@ -1182,7 +1179,7 @@ class T0Panel(QWidget):
         )
 
         try:
-            self.figure.savefig(
+            self.canvas.figure.savefig(
                 path, dpi=150, facecolor="#1e1e2e",
                 bbox_inches="tight",
             )
