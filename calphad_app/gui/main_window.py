@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import random
+import sys
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSettings, QMimeData, QTimer
 from PyQt6.QtGui import QAction, QKeySequence, QDragEnterEvent, QDropEvent
@@ -960,12 +961,8 @@ class MainWindow(QMainWindow):
 
     def _load_sample_database(self):
         """Load the bundled COST507.tdb sample database."""
-        # Look for COST507.tdb next to main.py (calphad_app directory)
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        sample_path = os.path.join(os.path.dirname(app_dir), "COST507.tdb")
-        if not os.path.isfile(sample_path):
-            # Also check inside gui's parent
-            sample_path = os.path.join(app_dir, "..", "COST507.tdb")
+        from main import resource_path
+        sample_path = resource_path("COST507.tdb")
 
         if os.path.isfile(sample_path):
             self.database_panel.load_file(sample_path)

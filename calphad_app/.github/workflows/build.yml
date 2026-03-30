@@ -2,7 +2,8 @@ name: Build CalcPHAD Windows Executable
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,11 +26,11 @@ jobs:
       - name: Build executable with PyInstaller
         run: |
           cd calphad_app
-          pyinstaller --onefile --windowed --name CalcPHAD --add-data "gui;gui" --add-data "core;core" main.py
+          pyinstaller CalcPHAD.spec
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CalcPHAD-windows.exe
+          name: CalcPHAD-windows
           path: calphad_app/dist/CalcPHAD.exe
           retention-days: 30

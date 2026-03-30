@@ -809,7 +809,8 @@ class ScheilPanel(QWidget):
         comps = sorted([el.upper() for el in elements_list]) + ["VA"]
         phases = self.phases_list if self.phases_list else list(self.db.phases.keys())
 
-        conds = {v.P: 101325, v.N: 1}
+        # The scheil `composition` argument expects only v.X entries
+        conds = {}
         for el, x in compositions.items():
             conds[v.X(el.upper())] = x
 

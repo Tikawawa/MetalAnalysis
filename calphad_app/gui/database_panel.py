@@ -316,8 +316,8 @@ class DatabasePanel(QWidget):
             return
 
         # Otherwise, load the bundled COST507.tdb first
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        sample_path = os.path.join(os.path.dirname(app_dir), "COST507.tdb")
+        from main import resource_path
+        sample_path = resource_path("COST507.tdb")
         if os.path.isfile(sample_path):
             self.load_file(sample_path)
         else:
